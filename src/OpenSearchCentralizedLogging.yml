@@ -134,24 +134,18 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
         Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
   DeploymentHelperRolePolicy:
     Type: 'AWS::IAM::Policy'
     Metadata:
       cfn_nag:
         rules_to_suppress:
           - id: W12
-            reason: '* needed, actions do no support resource level permissions'
+            reason: '* needed, actions do not support resource level permissions'
     Properties:
       PolicyDocument:
-        Statement:
-          - Action:
-              - 'logs:CreateLogStream'
-              - 'logs:PutLogEvents'
-              - 'logs:CreateLogGroup'
-            Effect: Allow
-            Resource:
-              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
-              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*:log-stream:*'              
+        Statement:    
           - Action:
               - 'ec2:DescribeRegions'
               - 'logs:PutDestination'
@@ -159,6 +153,14 @@ Resources:
               - 'logs:PutDestinationPolicy'
             Effect: Allow
             Resource: '*'
+          - Action:
+              - 's3:Delete*'
+              - 's3:Get*'
+              - 's3:List*'
+            Effect: Allow
+            Resource:
+              - 'arn:aws:s3:::*'
+              - 'arn:aws:s3:::*/*'
           - Action: 'iam:CreateServiceLinkedRole'
             Condition:
               StringLike:
@@ -184,12 +186,15 @@ Resources:
     Metadata:
       cfn_nag:
         rules_to_suppress:
+          - id: W58
+            reason: "Provided by managed policy AWSLambdaBasicExecutionRole in DeploymentHelperRole"
           - id: W89
             reason: "No need for VPC here"
           - id: W92
             reason: "No concurrency needed"
     DependsOn: 
       - DeploymentHelperLogGroup
+      - DeploymentHelperRolePolicy
     Properties: 
       FunctionName: DeploymentHelper     
       Code: 
@@ -218,18 +223,18 @@ Resources:
               try:
                   if resourceType == 'Custom::DeleteBucketContent':
                       delete_bucket_content(resourceProperties, requestType, event, context)
-                  if resourceType == 'Custom::CloudWatchDestination':
+                  elif resourceType == 'Custom::CloudWatchDestination':
                       cloudwatch_destinations(resourceProperties, requestType, event, context)
                   else:
                       logger.warn(f"No implementation for resourceType: {resourceType}")        
                   cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, event['LogicalResourceId'])
               except Exception as e:
-                  logger.info(f"Exception: {e}")
+                  logger.error(f"Exception: {e}")
                   cfnresponse.send(event, context, cfnresponse.FAILED, {}, event['LogicalResourceId'])
 
           def delete_bucket_content(resourceProperties, requestType, event, context):    
               bucket = resourceProperties['BucketName']
-              logger.info(f"bucket: {bucket}, requestType: {requestType}")
+              logger.debug(f"bucket: {bucket}, requestType: {requestType}")
               if requestType == 'Delete':
                   s3 = boto3.resource('s3')
                   bucket = s3.Bucket(bucket)
@@ -623,17 +628,27 @@ Resources:
         - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
   LogDataTransformerLambdaRolePolicy:
     Type: 'AWS::IAM::Policy'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W12
+            reason: "Affected actions apply to all resources"
     Properties:
       PolicyDocument:
         Statement:
           - Action:
+              - 'kinesis:DescribeStream'
               - 'kinesis:DescribeStreamSummary'
               - 'kinesis:GetRecords'
               - 'kinesis:GetShardIterator'
-              - 'kinesis:ListShards'
               - 'kinesis:SubscribeToShard'
             Effect: Allow
             Resource:  !GetAtt KinesisDataStream.Arn
+          - Action:
+              - 'kinesis:ListStreams'
+              - 'kinesis:ListShards'
+            Effect: Allow
+            Resource:  '*'
           - Action: 'firehose:PutRecordBatch'
             Effect: Allow
             Resource: !GetAtt OpenSearchFirehoseDeliveryStream.Arn
@@ -643,6 +658,13 @@ Resources:
         - !Ref LogDataTransformerLambdaRole
   LogDataTransformerLambda:
     Type: 'AWS::Lambda::Function'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: "Provided by managed policy AWSLambdaBasicExecutionRole in LogDataTransformerLambdaRole"
+    DependsOn:
+      - LogDataTransformerLambdaRolePolicy
     Properties:
       Code: 
         ZipFile: |          
@@ -844,19 +866,19 @@ Resources:
               - 'logs:CreateLogStream'
             Effect: Allow
             Resource: !GetAtt FirehoseLogGroup.Arn
-          - Action:
-              - 'kinesis:DescribeStream'
-              - 'kinesis:GetShardIterator'
-              - 'kinesis:GetRecords'
-              - 'kinesis:ListShards'
-            Effect: Allow
-            Resource: 
-              - !GetAtt KinesisDataStream.Arn
-          - Action:
-              - 'lambda:InvokeFunction'
-              - 'lambda:GetFunctionConfiguration'
-            Effect: Allow
-            Resource: !GetAtt LogDataTransformerLambda.Arn
+          # - Action:
+          #     - 'kinesis:DescribeStream'
+          #     - 'kinesis:GetShardIterator'
+          #     - 'kinesis:GetRecords'
+          #     - 'kinesis:ListShards'
+          #   Effect: Allow
+          #   Resource: 
+          #     - !GetAtt KinesisDataStream.Arn
+          # - Action:
+          #     - 'lambda:InvokeFunction'
+          #     - 'lambda:GetFunctionConfiguration'
+          #   Effect: Allow
+          #   Resource: !GetAtt LogDataTransformerLambda.Arn
           - Action: 
               - 'kms:GenerateDataKey'
               - 'kms:Decrypt'
@@ -889,7 +911,7 @@ Resources:
       DeliveryStreamEncryptionConfigurationInput:
         KeyType: AWS_OWNED_CMK
       DeliveryStreamName: OpenSearch-Firehose
-      DeliveryStreamType: KinesisStreamAsSource
+      DeliveryStreamType: DirectPut
       ElasticsearchDestinationConfiguration:
         CloudWatchLoggingOptions:
           Enabled: true
@@ -914,9 +936,9 @@ Resources:
             LogGroupName: /aws/kinesisfirehose/OpenSearch-Firehose
             LogStreamName: !Ref FirehoseS3LogStream
           RoleARN: !GetAtt FirehoseRole.Arn
-      KinesisStreamSourceConfiguration: 
-        KinesisStreamARN: !Ref KinesisDataStream
-        RoleARN: !GetAtt FirehoseRole.Arn
+      # KinesisStreamSourceConfiguration: 
+      #   KinesisStreamARN: !Ref KinesisDataStream
+      #   RoleARN: !GetAtt FirehoseRole.Arn
   CloudWatchDestinationRole:
     Type: 'AWS::IAM::Role'
     Properties:
