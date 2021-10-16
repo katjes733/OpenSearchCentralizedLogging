@@ -40,15 +40,6 @@ Parameters:
     Type: String
     Default: martin.macecek@werum.com
     AllowedPattern: '^[\w\.]+\@[\w]+\.[a-z]+$'
-  # VPC:
-  #   Type: 'AWS::EC2::VPC::Id'
-  #   Default: 'vpc-09594e541ab126a29'
-  # Subnet1:
-  #   Type: 'AWS::EC2::Subnet::Id'
-  #   Default: 'subnet-0970d66495f50da13'
-  # Subnet2:
-  #   Type: 'AWS::EC2::Subnet::Id'
-  #   Default: 'subnet-0d5036eb0cae1a5e4'
   Size:
     Type: String
     Description: OpenSearch size; S (4 data nodes), M (6 data nodes), L (6 data nodes)
@@ -200,9 +191,9 @@ Resources:
       - DeploymentHelperLogGroup
       - DeploymentHelperRolePolicy
     Properties: 
-      FunctionName: DeploymentHelper 
+      FunctionName: DeploymentHelper
       Architectures: 
-        - arm64    
+        - arm64
       Code: 
         ZipFile: |          
           import json, boto3, logging, time, os
@@ -429,23 +420,6 @@ Resources:
             Principal:
               Service: firehose.amazonaws.com
         Version: 2012-10-17
-  # OpenSearchSecurityGroup:
-  #   Type: 'AWS::EC2::SecurityGroup'
-  #   Properties:
-  #     GroupDescription: OpenSearchSecurityGroup
-  #     SecurityGroupEgress:
-  #       - CidrIp: '0.0.0.0/0'
-  #         Description: allow outbound https
-  #         FromPort: 443
-  #         IpProtocol: tcp
-  #         ToPort: 443
-  #     SecurityGroupIngress:
-  #       - CidrIp: '0.0.0.0/0'
-  #         Description: allow inbound https traffic
-  #         FromPort: 443
-  #         IpProtocol: tcp
-  #         ToPort: 443
-  #     VpcId: !Ref VPC
   OpenSearchServiceLinkedRole:
     Type: AWS::IAM::ServiceLinkedRole
     Properties: 
@@ -533,12 +507,6 @@ Resources:
           Enabled: false
       NodeToNodeEncryptionOptions:
         Enabled: true
-      # VPCOptions:
-      #   SecurityGroupIds:
-      #     - !GetAtt OpenSearchSecurityGroup.GroupId
-      #   SubnetIds:
-      #     - !Ref Subnet1
-      #     - !If [UseZoneAwarenes, !Ref Subnet2, !Ref AWS::NoValue]
   OpenSearchDomainDashboardRecordSet:
     Type: AWS::Route53::RecordSetGroup
     Properties:
@@ -680,7 +648,7 @@ Resources:
     DependsOn:
       - LogDataTransformerLambdaRolePolicy
     Properties:
-      Architectures:
+      Architectures: 
         - arm64
       Code: 
         ZipFile: |          
@@ -753,7 +721,7 @@ Resources:
           def processRecords(records, client, streamName):
               rV = []
               for r in records:
-                  data = base64.b64decode(r['data'])
+                  data = base64.b64decode(r['kinesis']['data'])
                   striodata = BytesIO(data)
                   with gzip.GzipFile(fileobj=striodata, mode='r') as f:
                       data = json.loads(f.read())
@@ -770,10 +738,9 @@ Resources:
           def lambda_handler(event, context):
               logger.debug(f"Event: {event}")
               logger.info(f"Start processing event records.")
-              region = event['region']
-              streamName = event['deliveryStreamArn'].split('/')[1]
-              client = boto3.client('firehose', region_name=region)
-              records = processRecords(event['records'], client, streamName)
+              streamName = os.environ['DATA_STREAM_NAME']
+              client = boto3.client('firehose')
+              records = processRecords(event['Records'], client, streamName)
               logger.info(f"Finished processing event records.")    
               logger.debug(f"Records: {records}")
       Description: Log Data Transformation function
@@ -785,6 +752,7 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: info
+          DATA_STREAM_NAME: !Ref OpenSearchFirehoseDeliveryStream
   LogDataTransformerKinesisEventSource:
     Type: 'AWS::Lambda::EventSourceMapping'
     Properties:
@@ -882,19 +850,6 @@ Resources:
               - 'logs:CreateLogStream'
             Effect: Allow
             Resource: !GetAtt FirehoseLogGroup.Arn
-          # - Action:
-          #     - 'kinesis:DescribeStream'
-          #     - 'kinesis:GetShardIterator'
-          #     - 'kinesis:GetRecords'
-          #     - 'kinesis:ListShards'
-          #   Effect: Allow
-          #   Resource: 
-          #     - !GetAtt KinesisDataStream.Arn
-          # - Action:
-          #     - 'lambda:InvokeFunction'
-          #     - 'lambda:GetFunctionConfiguration'
-          #   Effect: Allow
-          #   Resource: !GetAtt LogDataTransformerLambda.Arn
           - Action: 
               - 'kms:GenerateDataKey'
               - 'kms:Decrypt'
@@ -936,13 +891,6 @@ Resources:
         DomainARN: !GetAtt OpenSearchDomain.Arn
         IndexName: !Ref OpenSearchIndexName
         IndexRotationPeriod: OneDay
-        # ProcessingConfiguration:
-        #   Enabled: true
-        #   Processors: 
-        #     - Parameters:
-        #         - ParameterName: LambdaArn
-        #           ParameterValue: !GetAtt LogDataTransformerLambda.Arn
-        #       Type: Lambda
         RoleARN: !GetAtt FirehoseRole.Arn
         S3BackupMode: AllDocuments
         S3Configuration:
@@ -952,9 +900,6 @@ Resources:
             LogGroupName: /aws/kinesisfirehose/OpenSearch-Firehose
             LogStreamName: !Ref FirehoseS3LogStream
           RoleARN: !GetAtt FirehoseRole.Arn
-      # KinesisStreamSourceConfiguration: 
-      #   KinesisStreamARN: !Ref KinesisDataStream
-      #   RoleARN: !GetAtt FirehoseRole.Arn
   CloudWatchDestinationRole:
     Type: 'AWS::IAM::Role'
     Properties:
