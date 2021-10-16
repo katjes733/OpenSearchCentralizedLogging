@@ -184,6 +184,10 @@ Resources:
   DeploymentHelper:
     Type: AWS::Lambda::Function
     Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - E3002
       cfn_nag:
         rules_to_suppress:
           - id: W58
@@ -196,7 +200,9 @@ Resources:
       - DeploymentHelperLogGroup
       - DeploymentHelperRolePolicy
     Properties: 
-      FunctionName: DeploymentHelper     
+      FunctionName: DeploymentHelper 
+      Architectures: 
+        - arm64    
       Code: 
         ZipFile: |          
           import json, boto3, logging, time, os
@@ -659,13 +665,23 @@ Resources:
   LogDataTransformerLambda:
     Type: 'AWS::Lambda::Function'
     Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - E3002
       cfn_nag:
         rules_to_suppress:
           - id: W58
             reason: "Provided by managed policy AWSLambdaBasicExecutionRole in LogDataTransformerLambdaRole"
+          - id: W89
+            reason: "No need for VPC here"
+          - id: W92
+            reason: "No concurrency needed"
     DependsOn:
       - LogDataTransformerLambdaRolePolicy
     Properties:
+      Architectures:
+        - arm64
       Code: 
         ZipFile: |          
           import json, boto3, logging, base64, gzip, os
