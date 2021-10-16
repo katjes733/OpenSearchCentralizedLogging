@@ -35,14 +35,14 @@ Parameters:
   OpenSearchName:
     Description: Name of the OpenSearch Domain. Also used as subdomain Custom OpenSearch Dashboards
     Type: String
-    Default: maccentralizedlogging
+    Default: cwl
   CustomOpenSearchDashboardsDomain:
     Description: Domain for the Custom OpenSearch Dashboards
     Type: String
-    Default: werumcloudtest.com
   AdminEmail:
+    Description: The email address of the admin account
     Type: String
-    Default: martin.macecek@werum.com
+    Default: admin@domain.com
     AllowedPattern: '^[\w\.]+\@[\w]+\.[a-z]+$'
   Size:
     Description: OpenSearch size; S (4 data nodes), M (6 data nodes), L (6 data nodes)
@@ -63,17 +63,15 @@ Parameters:
   SpokeRegions:
     Type: String
     Description: The comma separated list of regions to be supported. Leave empty for all regions.
-    Default: 'us-east-1,us-west-2,eu-central-1,eu-west-1,ap-northeast-1,ap-northeast-2,ap-southeast-1,ap-southeast-2,eu-west-2,ap-south-1'
     AllowedPattern: '^$|^[a-z]{2}-(?:gov-){0,1}(?:north|northeast|east|southeast|south|southwest|west|northwest|central)-[1-9]{1}(?:,[a-z]{2}-(?:gov-){0,1}(?:north|northeast|east|southeast|south|southwest|west|northwest|central)-[1-9]{1})*$'
   SpokeAccounts:
     Type: String
     Description: The comma separated list of accounts that may deliver logs. Leave empty for current account only.
-    Default: '406335548310,341014315148,156132185149,718147255731,389724728915,700811683885,248649875476,913145364168,699157125115,943339554545,928357339090'
     AllowedPattern: '^$|^\d{12}(?:,\d{12})*$'
   DestinationName:
     Type: String
     Description: The name of the destination for each region
-    Default: 'OpenSearch-Destination'
+    Default: 'Central-CloudWatch-Logging'
     AllowedPattern: '^[^:*]*$'
   OpenSearchIndexName:
     Type: String
@@ -186,7 +184,7 @@ Resources:
       RetentionInDays: 1
       LogGroupName: !Sub 
         - '/aws/lambda/${LogGroupNamePrefix}DeploymentHelper'
-        - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }        
+        - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
   DeploymentHelper:
     Type: AWS::Lambda::Function
     Metadata:
@@ -648,7 +646,13 @@ Resources:
       BucketName: !Ref KinesisDeliveryStreamBackupBucket
   LogDataTransformerLambdaRole:
     Type: 'AWS::IAM::Role'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Only in case a specific resource prefix is used"
     Properties:
+      RoleName: !If [UseSpecificResourcePrefix, !Sub '${ResourcePrefix}LogDataTransformerLambdaRole', !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Statement:
           - Action: 'sts:AssumeRole'
@@ -666,6 +670,9 @@ Resources:
           - id: W12
             reason: "Affected actions apply to all resources"
     Properties:
+      PolicyName: !Sub 
+        - '${PolicyNamePrefix}LogDataTransformerLambdaRolePolicy'
+        - { PolicyNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       PolicyDocument:
         Statement:
           - Action:
@@ -683,9 +690,8 @@ Resources:
             Resource:  '*'
           - Action: 'firehose:PutRecordBatch'
             Effect: Allow
-            Resource: !GetAtt OpenSearchFirehoseDeliveryStream.Arn
+            Resource: !GetAtt KinesisDeliveryStream.Arn
         Version: 2012-10-17
-      PolicyName: LogDataTransformerLambdaRolePolicy
       Roles:
         - !Ref LogDataTransformerLambdaRole
   LogDataTransformerLambda:
@@ -705,7 +711,10 @@ Resources:
             reason: "No concurrency needed"
     DependsOn:
       - LogDataTransformerLambdaRolePolicy
-    Properties:
+    Properties: 
+      FunctionName: !Sub 
+        - '${FunctionNamePrefix}LogDataTransformerLambda'
+        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       Architectures: 
         - arm64
       Code: 
@@ -810,7 +819,7 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: info
-          DATA_STREAM_NAME: !Ref OpenSearchFirehoseDeliveryStream
+          DATA_STREAM_NAME: !Ref KinesisDeliveryStream
   LogDataTransformerKinesisEventSource:
     Type: 'AWS::Lambda::EventSourceMapping'
     Properties:
@@ -818,7 +827,7 @@ Resources:
       FunctionName: !Ref LogDataTransformerLambda
       BatchSize: 100
       StartingPosition: TRIM_HORIZON
-  KinesisOpenSearchBucketPolicy:
+  KinesisDeliveryStreamBackupBucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
     Properties:
       Bucket: !Ref KinesisDeliveryStreamBackupBucket
@@ -834,22 +843,24 @@ Resources:
               - !Sub '${KinesisDeliveryStreamBackupBucket.Arn}'
               - !Sub '${KinesisDeliveryStreamBackupBucket.Arn}/*'
         Version: 2012-10-17
-  FirehoseLogGroup:
+  KinesisDeliveryStreamLogGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
-      LogGroupName: /aws/kinesisfirehose/OpenSearch-Firehose
+      LogGroupName: !Sub 
+        - '/aws/kinesisfirehose/${LogGroupNamePrefix}KinesisDeliveryStream'
+        - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       RetentionInDays: 30
-  FirehoseOpenSearchLogStream:
+  KinesisDeliveryStreamOpenSearchDeliveryLogStream:
     Type: 'AWS::Logs::LogStream'
     Properties:
-      LogGroupName: !Ref FirehoseLogGroup
+      LogGroupName: !Ref KinesisDeliveryStreamLogGroup
       LogStreamName: OpenSearchDelivery  
-  FirehoseS3LogStream:
+  KinesisDeliveryStreamS3DeliveryLogStream:
     Type: 'AWS::Logs::LogStream'
     Properties:
-      LogGroupName: !Ref FirehoseLogGroup
+      LogGroupName: !Ref KinesisDeliveryStreamLogGroup
       LogStreamName: S3Delivery
-  FirehosePolicy:
+  KinesisDeliveryStreamPolicy:
     Type: 'AWS::IAM::Policy'
     Metadata:
       cfn_nag:
@@ -859,6 +870,9 @@ Resources:
           - id: W76
             reason: policy verified
     Properties:
+      PolicyName: !Sub 
+        - '${PolicyNamePrefix}KinesisDeliveryStreamPolicy'
+        - { PolicyNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       PolicyDocument:
         Statement:
           - Action:
@@ -907,7 +921,7 @@ Resources:
               - 'logs:PutLogEvents'
               - 'logs:CreateLogStream'
             Effect: Allow
-            Resource: !GetAtt FirehoseLogGroup.Arn
+            Resource: !GetAtt KinesisDeliveryStreamLogGroup.Arn
           - Action: 
               - 'kms:GenerateDataKey'
               - 'kms:Decrypt'
@@ -929,13 +943,12 @@ Resources:
             Effect: Allow
             Resource: !Sub 'arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*'
         Version: 2012-10-17
-      PolicyName: FirehosePolicy
       Roles:
         - !Ref KinesisDeliveryStreamRole
-  OpenSearchFirehoseDeliveryStream:
+  KinesisDeliveryStream:
     Type: 'AWS::KinesisFirehose::DeliveryStream'
     DependsOn:
-      - FirehosePolicy
+      - KinesisDeliveryStreamPolicy
     Properties:
       DeliveryStreamEncryptionConfigurationInput:
         KeyType: AWS_OWNED_CMK
@@ -944,8 +957,10 @@ Resources:
       ElasticsearchDestinationConfiguration:
         CloudWatchLoggingOptions:
           Enabled: true
-          LogGroupName: /aws/kinesisfirehose/OpenSearch-Firehose
-          LogStreamName: !Ref FirehoseOpenSearchLogStream
+          LogGroupName: !Sub 
+            - '/aws/kinesisfirehose/${LogGroupNamePrefix}KinesisDeliveryStream'
+            - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
+          LogStreamName: !Ref KinesisDeliveryStreamOpenSearchDeliveryLogStream
         DomainARN: !GetAtt OpenSearchDomain.Arn
         IndexName: !Ref OpenSearchIndexName
         IndexRotationPeriod: OneDay
@@ -955,12 +970,20 @@ Resources:
           BucketARN: !GetAtt KinesisDeliveryStreamBackupBucket.Arn
           CloudWatchLoggingOptions:
             Enabled: true
-            LogGroupName: /aws/kinesisfirehose/OpenSearch-Firehose
-            LogStreamName: !Ref FirehoseS3LogStream
+            LogGroupName: !Sub 
+              - '/aws/kinesisfirehose/${LogGroupNamePrefix}KinesisDeliveryStream'
+              - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
+            LogStreamName: !Ref KinesisDeliveryStreamS3DeliveryLogStream
           RoleARN: !GetAtt KinesisDeliveryStreamRole.Arn
   CloudWatchDestinationRole:
     Type: 'AWS::IAM::Role'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Only in case a specific resource prefix is used"
     Properties:
+      RoleName: !If [UseSpecificResourcePrefix, !Sub '${ResourcePrefix}CloudWatchDestinationRole', !Ref AWS::NoValue]
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
@@ -971,25 +994,29 @@ Resources:
   CloudWatchDestinationRolePolicy:
     Type: 'AWS::IAM::Policy'
     Properties:
+      PolicyName: !Sub 
+        - '${PolicyNamePrefix}CloudWatchDestinationRolePolicy'
+        - { PolicyNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       PolicyDocument:
         Statement:
           - Action: 'kinesis:PutRecord'
             Effect: Allow
             Resource: !GetAtt KinesisDataStream.Arn
         Version: 2012-10-17
-      PolicyName: CloudWatchDestinationRolePolicy
       Roles:
         - !Ref CloudWatchDestinationRole
   DeploymentHelperAdditionalRolePolicy:
     Type: 'AWS::IAM::Policy'
     Properties:
+      PolicyName: !Sub 
+        - '${PolicyNamePrefix}DeploymentHelperAdditionalRolePolicy'
+        - { PolicyNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       PolicyDocument:
         Statement:
           - Action: 'iam:PassRole'
             Effect: Allow
             Resource: !GetAtt CloudWatchDestinationRole.Arn
         Version: 2012-10-17
-      PolicyName: DeploymentHelperAdditionalRolePolicy
       Roles:
         - !Ref DeploymentHelperRole
     DependsOn:
