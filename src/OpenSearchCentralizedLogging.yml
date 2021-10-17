@@ -170,6 +170,10 @@ Resources:
                 'iam:AWSServiceName': es.amazonaws.com
             Effect: Allow
             Resource: !Sub 'arn:${AWS::Partition}:iam::*:role/aws-service-role/es.amazonaws.com/AWSServiceRoleForAmazonElasticsearchService*'
+          - Action:
+              - 'route53:ListHostedZonesByName'
+            Effect: Allow                
+            Resource: '*'
         Version: 2012-10-17      
       Roles:
         - !Ref DeploymentHelperRole
