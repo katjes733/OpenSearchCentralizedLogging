@@ -33,19 +33,18 @@ Parameters:
     Default: ''
     AllowedPattern: ^$|^[a-z0-9-]{0,7}$
   OpenSearchName:
-    Description: Name of the OpenSearch Domain. Also used as subdomain Custom OpenSearch Dashboards
+    Description: Name of the OpenSearch Domain. Also used as subdomain Custom OpenSearch Dashboards.
     Type: String
-    Default: cwl
   CustomOpenSearchDashboardsDomain:
-    Description: Domain for the Custom OpenSearch Dashboards
+    Description: Domain for the Custom OpenSearch Dashboards.
     Type: String
+    AllowedPattern: ^([\w-]+\.)+[\w-]+$
   AdminEmail:
     Description: The email address of the admin account
     Type: String
-    Default: admin@domain.com
     AllowedPattern: '^[\w\.]+\@[\w]+\.[a-z]+$'
   Size:
-    Description: OpenSearch size; S (4 data nodes), M (6 data nodes), L (6 data nodes)
+    Description: OpenSearch cluster size; XS (1 data node), S (4 data nodes), M (6 data nodes), L (6 data nodes)
     Type: String
     Default: XS
     AllowedValues:
@@ -54,28 +53,28 @@ Parameters:
       - M
       - L
   MultiAz:
-    Type: String
     Description: Whether or not to use Multi AZ
+    Type: String
     Default: 'false'
     AllowedValues:
       - 'true'
       - 'false'
   SpokeRegions:
-    Type: String
     Description: The comma separated list of regions to be supported. Leave empty for all regions.
+    Type: String
     AllowedPattern: '^$|^[a-z]{2}-(?:gov-){0,1}(?:north|northeast|east|southeast|south|southwest|west|northwest|central)-[1-9]{1}(?:,[a-z]{2}-(?:gov-){0,1}(?:north|northeast|east|southeast|south|southwest|west|northwest|central)-[1-9]{1})*$'
   SpokeAccounts:
-    Type: String
     Description: The comma separated list of accounts that may deliver logs. Leave empty for current account only.
+    Type: String
     AllowedPattern: '^$|^\d{12}(?:,\d{12})*$'
   DestinationName:
-    Type: String
     Description: The name of the destination for each region
+    Type: String
     Default: 'Central-CloudWatch-Logging'
     AllowedPattern: '^[^:*]*$'
   OpenSearchIndexName:
-    Type: String
     Description: The name of the index in OpenSearch
+    Type: String
     Default: 'cwl'
     AllowedPattern: '^[\w\-]{1,80}$'
   OpenSearchDashboardsAllowedCidrs:
@@ -83,6 +82,79 @@ Parameters:
     Type: String
     Default: ''
     AllowedPattern: ^$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))(,(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2])))*$
+  OpenSearchDashboardsAllowedEmailSignUpRegex:
+    Description: Restrict sign up only to emails matching this regular expression (leave empty to allow all - not recommended)
+    Type: String
+    Default: ''
+  OpenSearchDashboardsAutoConfirmUser:
+    Type: String
+    Description: Whether or not users signing up DO NOT have to confirm their email with a security code (highly recommended to leave at false)
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+# -----------------------------------------------------------------------------
+# Metadata:
+# -----------------------------------------------------------------------------
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: OpenSearch General Configuration
+        Parameters:
+          - OpenSearchName
+          - CustomOpenSearchDashboardsDomain
+          - AdminEmail
+          - OpenSearchIndexName
+      - Label:
+          default: OpenSearch Sizing Configuration
+        Parameters:
+          - Size
+          - MultiAz
+      - Label:
+          default: OpenSearch Security Configuration
+        Parameters:
+          - OpenSearchDashboardsAllowedCidrs
+          - OpenSearchDashboardsAllowedEmailSignUpRegex
+          - OpenSearchDashboardsAutoConfirmUser
+      - Label:
+          default: Log Delivery Configuration
+        Parameters:
+          - SpokeRegions
+          - SpokeAccounts
+          - DestinationName
+      - Label:
+          default: Deployment Configuration
+        Parameters:
+          - ResourcePrefix
+    ParameterLabels:
+      OpenSearchName:
+        default: OpenSearch Name
+      CustomOpenSearchDashboardsDomain:
+        default: Custom Domain for OpenSearch Dashboards
+      AdminEmail:
+        default: Administrator Email
+      OpenSearchIndexName:
+        default: OpenSearch Index Name
+      Size:
+        default: OpenSearch Cluster Size
+      MultiAz:
+        default: OpenSearch Multi AZ Configuration
+      OpenSearchDashboardsAllowedCidrs:
+        default: OpenSearch Dashboards Allowed CIDRs
+      OpenSearchDashboardsAllowedEmailSignUpRegex:
+        default: OpenSearch Dashboards Allowed Email Sign Up Regex
+      OpenSearchDashboardsAutoConfirmUser:
+        default: OpenSearch Dashboards Auto Confirm User
+      SpokeRegions:
+        default: Log Delivery Regions
+      SpokeAccounts:
+        default: Log Delivery Accounts
+      DestinationName:
+        default: Log Delivery Destination Name
+      ResourcePrefix:
+        default: Resource Prefix
 
 # -----------------------------------------------------------------------------
 # Mappings
@@ -328,6 +400,102 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: info
+  OpenSearchCognitoUserPoolPreSignUpRole:
+    Type: 'AWS::IAM::Role'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Only in case a specific resource prefix is used"
+    Properties:
+      RoleName: !If [UseSpecificResourcePrefix, !Sub '${ResourcePrefix}OpenSearchCognitoUserPoolPreSignUpRole', !Ref AWS::NoValue]
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  OpenSearchCognitoUserPoolPreSignUpLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "No critical data in logs"
+    Properties:
+      RetentionInDays: 1
+      LogGroupName: !Sub 
+        - '/aws/lambda/${LogGroupNamePrefix}OpenSearchCognitoUserPoolPreSignUpLogGroup'
+        - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
+  OpenSearchCognitoUserPoolPreSignUp:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - E3002
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: "Provided by managed policy AWSLambdaBasicExecutionRole in OpenSearchCognitoUserPoolPreSignUpRole"
+          - id: W89
+            reason: "No need for VPC here"
+          - id: W92
+            reason: "No concurrency needed"
+    DependsOn: 
+      - OpenSearchCognitoUserPoolPreSignUpLogGroup
+    Properties: 
+      FunctionName: !Sub 
+        - '${FunctionNamePrefix}OpenSearchCognitoUserPoolPreSignUp'
+        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
+      Architectures: 
+        - arm64
+      Code: 
+        ZipFile: |          
+          import os, logging, re
+
+          levels = {
+              'critical': logging.CRITICAL,
+              'error': logging.ERROR,
+              'warn': logging.WARNING,
+              'info': logging.INFO,
+              'debug': logging.DEBUG
+          }
+          logger = logging.getLogger()
+          try:   
+              logger.setLevel(levels.get(os.getenv('LOG_LEVEL', 'info').lower()))
+          except KeyError as e:
+              logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              logger.debug(f"Incoming event: {event}")
+              email = event['request']['userAttributes']['email']
+              pattern = re.compile(f"{os.getenv('EMAIL_VALIDATION_REGEX', '^.*$')}")
+              assert pattern.match(email), f": Email {email} is not allowed to sign up. Please contact the administrator if you believe you are getting this in error"
+              event['response']['autoConfirmUser'] = os.getenv('AUTO_CONFIRM_USER', 'false').lower() == 'true'
+              logger.debug(f"Outgoing event: {event}")
+              return event
+      Description: OpenSearch - deployment helper functions
+      Handler: "index.lambda_handler"
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 300
+      Role: !GetAtt OpenSearchCognitoUserPoolPreSignUpRole.Arn
+      Environment:
+        Variables:
+          LOG_LEVEL: info
+          EMAIL_VALIDATION_REGEX: !Ref OpenSearchDashboardsAllowedEmailSignUpRegex
+          AUTO_CONFIRM_USER: !Ref OpenSearchDashboardsAutoConfirmUser
+  OpenSearchCognitoUserPoolPreSignUpPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt OpenSearchCognitoUserPoolPreSignUp.Arn
+      Principal: 'cognito-idp.amazonaws.com'
+      SourceArn: !GetAtt OpenSearchCognitoUserPool.Arn
   OpenSearchCognitoUserPool:
     Type: 'AWS::Cognito::UserPool'
     Properties:
@@ -339,11 +507,13 @@ Resources:
           - Name: verified_email
             Priority: 1
       AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: true
+        AllowAdminCreateUserOnly: false
       AutoVerifiedAttributes:
         - email
       EmailVerificationMessage: 'The verification code to your new account is {####}'
       EmailVerificationSubject: Verify your new account
+      LambdaConfig:
+        PreSignUp: !GetAtt OpenSearchCognitoUserPoolPreSignUp.Arn
       Policies:
         PasswordPolicy:
           MinimumLength: 8
