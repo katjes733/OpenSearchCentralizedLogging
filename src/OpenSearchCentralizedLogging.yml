@@ -745,7 +745,7 @@ Resources:
         EBSEnabled: true
         VolumeSize: 10
         VolumeType: gp2
-      EngineVersion: 'OpenSearch_1.0'
+      EngineVersion: 'OpenSearch_1.1'
       EncryptionAtRestOptions:
         Enabled: true
       LogPublishingOptions:
@@ -757,6 +757,8 @@ Resources:
           Enabled: false
       NodeToNodeEncryptionOptions:
         Enabled: true
+    UpdatePolicy:
+      EnableVersionUpgrade: true
   OpenSearchDomainDashboardRecordSet:
     Type: AWS::Route53::RecordSetGroup
     Properties:
