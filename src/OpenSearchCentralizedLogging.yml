@@ -196,6 +196,7 @@ Conditions:
   UseCurrentAccount: !Equals [!Ref SpokeAccounts, '']
   UseSpecificResourcePrefix: !Not [!Equals [!Ref ResourcePrefix, '']]
   UseCidrRestriction: !Not [!Equals [!Ref OpenSearchDashboardsAllowedCidrs, '']]
+  IsArmSupportedRegion: !Or [!Equals ['us-east-1', !Ref AWS::Region], !Equals ['us-west-2', !Ref AWS::Region], !Equals ['eu-central-1', !Ref AWS::Region], !Equals ['eu-west-1', !Ref AWS::Region], !Equals ['ap-south-1', !Ref AWS::Region], !Equals ['ap-southeast-1', !Ref AWS::Region], !Equals ['ap-southeast-2', !Ref AWS::Region], !Equals ['ap-northeast-1', !Ref AWS::Region]]
 
 # -----------------------------------------------------------------------------
 # Resources
@@ -293,9 +294,12 @@ Resources:
     Properties: 
       FunctionName: !Sub 
         - '${FunctionNamePrefix}DeploymentHelper'
-        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
-      Architectures: 
-        - arm64
+        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }     
+      Architectures:  
+        - !If 
+          - IsArmSupportedRegion
+          - arm64
+          - x86_64
       Code: 
         ZipFile: |          
           import json, boto3, logging, time, os
@@ -398,7 +402,7 @@ Resources:
               return rv
       Description: OpenSearch - deployment helper functions
       Handler: "index.lambda_handler"
-      Runtime: python3.8
+      Runtime: python3.9
       MemorySize: 128
       Timeout: 300
       Role: !GetAtt DeploymentHelperRole.Arn
@@ -455,9 +459,12 @@ Resources:
     Properties: 
       FunctionName: !Sub 
         - '${FunctionNamePrefix}OpenSearchCognitoUserPoolPreSignUp'
-        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
-      Architectures: 
-        - arm64
+        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }     
+      Architectures:  
+        - !If 
+          - IsArmSupportedRegion
+          - arm64
+          - x86_64
       Code: 
         ZipFile: |          
           import os, logging, re
@@ -485,7 +492,7 @@ Resources:
               return event
       Description: OpenSearch - deployment helper functions
       Handler: "index.lambda_handler"
-      Runtime: python3.8
+      Runtime: python3.9
       MemorySize: 128
       Timeout: 300
       Role: !GetAtt OpenSearchCognitoUserPoolPreSignUpRole.Arn
@@ -919,9 +926,12 @@ Resources:
     Properties: 
       FunctionName: !Sub 
         - '${FunctionNamePrefix}LogDataTransformerLambda'
-        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
-      Architectures: 
-        - arm64
+        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }     
+      Architectures:  
+        - !If 
+          - IsArmSupportedRegion
+          - arm64
+          - x86_64
       Code: 
         ZipFile: |          
           import json, boto3, logging, base64, gzip, os
@@ -1017,7 +1027,7 @@ Resources:
               logger.debug(f"Records: {records}")
       Description: Log Data Transformation function
       Handler: "index.lambda_handler"
-      Runtime: python3.8
+      Runtime: python3.9
       MemorySize: 128
       Timeout: 300
       Role: !GetAtt LogDataTransformerLambdaRole.Arn
