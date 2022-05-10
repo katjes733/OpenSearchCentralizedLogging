@@ -35,10 +35,11 @@ Parameters:
   OpenSearchName:
     Description: Name of the OpenSearch Domain. Also used as subdomain Custom OpenSearch Dashboards.
     Type: String
+    AllowedPattern: ^[a-z0-9-]{3,28}$
   CustomOpenSearchDashboardsDomain:
     Description: Domain for the Custom OpenSearch Dashboards.
     Type: String
-    AllowedPattern: ^([\w-]+\.)+[\w-]+$
+    AllowedPattern: ^$|([\w-]+\.)+[\w-]+$
   AdminEmail:
     Description: The email address of the admin account
     Type: String
@@ -197,6 +198,7 @@ Conditions:
   UseSpecificResourcePrefix: !Not [!Equals [!Ref ResourcePrefix, '']]
   UseCidrRestriction: !Not [!Equals [!Ref OpenSearchDashboardsAllowedCidrs, '']]
   IsArmSupportedRegion: !Or [!Equals ['us-east-1', !Ref AWS::Region], !Equals ['us-west-2', !Ref AWS::Region], !Equals ['eu-central-1', !Ref AWS::Region], !Equals ['eu-west-1', !Ref AWS::Region], !Equals ['ap-south-1', !Ref AWS::Region], !Equals ['ap-southeast-1', !Ref AWS::Region], !Equals ['ap-southeast-2', !Ref AWS::Region], !Equals ['ap-northeast-1', !Ref AWS::Region]]
+  UseCustomDomain: !Not [!Equals [!Ref CustomOpenSearchDashboardsDomain, '']]
 
 # -----------------------------------------------------------------------------
 # Resources
@@ -437,7 +439,7 @@ Resources:
     Properties:
       RetentionInDays: 1
       LogGroupName: !Sub 
-        - '/aws/lambda/${LogGroupNamePrefix}OpenSearchCognitoUserPoolPreSignUpLogGroup'
+        - '/aws/lambda/${LogGroupNamePrefix}OpenSearchCognitoUserPoolPreSignUp'
         - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
   OpenSearchCognitoUserPoolPreSignUp:
     Type: AWS::Lambda::Function
@@ -667,11 +669,13 @@ Resources:
       AWSServiceName: 'es.amazonaws.com'  
   GetHostedZoneId:
     Type: Custom::GetHostedZoneId
+    Condition: UseCustomDomain
     Properties:
       ServiceToken: !GetAtt DeploymentHelper.Arn
       DnsName: !Ref CustomOpenSearchDashboardsDomain
   CustomOpenSearchDashboardsCertificate:
     Type: AWS::CertificateManager::Certificate
+    Condition: UseCustomDomain
     Properties:
       DomainName: !Sub '${OpenSearchName}.${CustomOpenSearchDashboardsDomain}'
       ValidationMethod: DNS
@@ -747,12 +751,14 @@ Resources:
         IdentityPoolId: !Ref OpenSearchCognitoIdentityPool
         RoleArn: !GetAtt OpenSearchCognitoRole.Arn
         UserPoolId: !Ref OpenSearchCognitoUserPool
-      DomainEndpointOptions:
-        CustomEndpoint: !Sub '${OpenSearchName}.${CustomOpenSearchDashboardsDomain}'
-        CustomEndpointCertificateArn: !Ref CustomOpenSearchDashboardsCertificate
-        CustomEndpointEnabled: true
-        EnforceHTTPS: true
-        TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+      DomainEndpointOptions: !If
+        - UseCustomDomain
+        - CustomEndpoint: !Sub '${OpenSearchName}.${CustomOpenSearchDashboardsDomain}'
+          CustomEndpointCertificateArn: !Ref CustomOpenSearchDashboardsCertificate
+          CustomEndpointEnabled: true
+          EnforceHTTPS: true
+          TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+        - !Ref AWS::NoValue
       EBSOptions:
         EBSEnabled: true
         VolumeSize: 10
@@ -773,6 +779,7 @@ Resources:
       EnableVersionUpgrade: true
   OpenSearchDomainDashboardRecordSet:
     Type: AWS::Route53::RecordSetGroup
+    Condition: UseCustomDomain
     Properties:
       HostedZoneId: !GetAtt GetHostedZoneId.HostedZoneId
       RecordSets:
@@ -1253,4 +1260,7 @@ Outputs:
     Value: !Sub 'arn:${AWS::Partition}:logs:<region>:${AWS::AccountId}:destination:${DestinationName}'
   GuiUrl:
     Description: The URL for accessing the GUI of OpenSearch
-    Value: !Sub 'https://${OpenSearchName}.${CustomOpenSearchDashboardsDomain}/_dashboards'
+    Value: !If
+      - UseCustomDomain
+      - !Sub 'https://${OpenSearchName}.${CustomOpenSearchDashboardsDomain}/_dashboards'
+      - !Sub 'https://${OpenSearchDomain.DomainEndpoint}/_dashboards'
