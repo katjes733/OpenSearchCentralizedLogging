@@ -33,6 +33,34 @@ data "archive_file" "email_pre_signup" {
     output_path = "${path.module}/.package/email_pre_signup.zip"
 }
 
+data "archive_file" "log_data_transformer" {
+    type = "zip"
+    source_file = "${path.module}/python/log_data_transformer.py"
+    output_path = "${path.module}/.package/log_data_transformer.zip"
+}
+
+data "aws_iam_policy_document" "lambda_assume_role_document" {
+    statement {
+        effect = "Allow"
+        actions = [ "sts:AssumeRole" ]
+        principals {
+            type        = "Service"
+            identifiers = [ "lambda.amazonaws.com" ]
+        }
+    }
+}
+
+data "aws_iam_policy_document" "firehose_assume_role_document" {
+    statement {
+        effect = "Allow"
+        actions = [ "sts:AssumeRole" ]
+        principals {
+            type        = "Service"
+            identifiers = [ "firehose.amazonaws.com" ]
+        }
+    }
+}
+
 data "aws_route53_zone" "os_custom_dashboards_hosted_zone_id" {
     count = var.os_custom_dashboards_domain != "" ? 1 : 0
     name  = "${var.os_custom_dashboards_domain}"
@@ -40,6 +68,7 @@ data "aws_route53_zone" "os_custom_dashboards_hosted_zone_id" {
 
 data "aws_iam_policy_document" "os_access_policy" {
     statement {
+        effect = "Allow"
         actions = [
             "es:ESHttpGet",
             "es:ESHttpDelete",
@@ -66,6 +95,7 @@ data "aws_iam_policy_document" "os_access_policy" {
     }
 
     statement {
+        effect = "Allow"
         actions = [
             "es:DescribeElasticsearchDomain",
             "es:DescribeElasticsearchDomains",
@@ -78,7 +108,122 @@ data "aws_iam_policy_document" "os_access_policy" {
 
         principals {
             type        = "AWS"
-            identifiers = [ aws_iam_role.kinesis_delivery_stream_role.arn ]
+            identifiers = [ aws_iam_role.os_kinesis_delivery_stream_role.arn ]
         }
     }
 }
+
+data "aws_iam_policy_document" "os_log_resource_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "logs:PutLogEvents",
+            "logs:PutLogEventsBatch",
+            "logs:CreateLogStream"
+        ]
+        resources = ["arn:aws:logs:*"]
+
+        principals {
+            type        = "Service"
+            identifiers = [ "es.amazonaws.com" ]
+        }
+    }
+}
+
+data "aws_iam_policy_document" "os_cognito_auth_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "es:ESHttpGet",
+            "es:ESHttpDelete",
+            "es:ESHttpPut",
+            "es:ESHttpPost",
+            "es:ESHttpHead",
+            "es:ESHttpPatch"
+        ]
+        resources = [ aws_elasticsearch_domain.opensearch.arn ]
+    }
+}
+
+data "aws_iam_policy_document" "os_kinesis_delivery_stream_backup_bucket_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "s3:Put*",
+            "s3:Get*"
+        ]
+        principals {
+            type        = "AWS"
+            identifiers = [ aws_iam_role.os_kinesis_delivery_stream_role.arn ]
+        }
+        resources = [ 
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}",
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}/*" 
+        ]
+    }
+}
+
+data "aws_iam_policy_document" "os_kinesis_delivery_stream_role_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "s3:AbortMultipartUpload",
+            "s3:GetBucketLocation",
+            "s3:GetObject",
+            "s3:ListBucket",
+            "s3:ListBucketMultipartUploads"
+        ]
+        resources = [ 
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}",
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}/*" 
+        ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [
+            "ec2:DescribeVpcs",
+            "ec2:DescribeVpcAttribute",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:CreateNetworkInterface",
+            "ec2:CreateNetworkInterfacePermission",
+            "ec2:DeleteNetworkInterface"
+        ]
+        resources = [ "*" ]
+    }
+    # TODO es:...
+}
+
+data "aws_iam_policy_document" "os_log_data_transformer_role_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "kinesis:DescribeStream",
+            "kinesis:DescribeStreamSummary",
+            "kinesis:GetRecords",
+            "kinesis:GetShardIterator",
+            "kinesis:SubscribeToShard"
+        ]
+        resources = [ aws_kinesis_stream.os_kinesis_data_stream.arn ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [
+            "kinesis:ListStreams",
+            "kinesis:ListShards"
+        ]
+        resources = [ "*" ]
+    }
+
+    # statement {
+    #     effect = "Allow"
+    #     actions = [
+    #         "firehose:PutRecordBatch"
+    #     ]
+    #     resources = [ aws_kinesis_firehose_delivery_stream.os_kinesis_delivery_stream.arn ]
+    # }
+}
+

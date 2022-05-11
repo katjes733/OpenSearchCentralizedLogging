@@ -53,6 +53,22 @@ variable "os_domain_name" {
     }
 }
 
+variable "os_size" {
+    description = "OpenSearch cluster size; XS (1 data node), S (4 data nodes), M (6 data nodes), L (6 data nodes)."
+    type        = string
+
+    validation {
+        condition     = contains(["XS", "S", "M", "L"], var.os_size)
+        error_message = "Must be a valid size: XS, S, M or L."
+    }
+}
+
+variable "os_multi_az" {
+    description = "Whether or not to use Multi AZ with 2 AZs"
+    type        = bool
+    default     = false
+}
+
 variable "os_engine_version" {
     description = "The name of OpenSearch engine version."
     type        = string

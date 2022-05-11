@@ -27,6 +27,10 @@ resource_prefix = "mac-re-"
 
 os_domain_name = "mac-re-cwl"
 
+os_size = "XS"
+
+os_multi_az = false
+
 os_engine_version = "1.2"
 
 os_custom_dashboards_domain = ""

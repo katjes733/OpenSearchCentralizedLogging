@@ -41,11 +41,6 @@ provider "aws" {
   region     = "us-east-1"
 }
 
-locals {
-    is_arm_supported_region = contains(["us-east-1", "us-west-2", "eu-central-1", "eu-west-1", "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1"], data.aws_region.current.name)
-    os_cognito_user_pool_pre_signup_lambda_function_name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoUserPoolPreSignUp"
-}
-
 resource "random_string" "unique_id" {
     count   = var.resource_prefix == "" ? 1 : 0
     length  = 8
@@ -53,27 +48,19 @@ resource "random_string" "unique_id" {
 }
 
 resource "aws_iam_role" "os_cognito_user_pool_pre_signup_role" {
-    name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchCognitoUserPoolPreSignUpRole" : null
-    managed_policy_arns = [
-        "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-    ]
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action = "sts:AssumeRole"
-                Effect = "Allow"
-                Principal = {
-                    Service = "lambda.amazonaws.com"
-                }
-            },
-        ]
-    })
+    name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchCognitoUserPoolPreSignUpRole" : null    
+    assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_document.json
+}
+
+resource "aws_iam_role_policy_attachment" "os_cognito_user_pool_pre_signup_role_attachment_basic" {
+    role       = aws_iam_role.os_cognito_user_pool_pre_signup_role.name
+    policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_cloudwatch_log_group" "os_cognito_user_pool_pre_signup_log_group" {
     name = "/aws/lambda/${local.os_cognito_user_pool_pre_signup_lambda_function_name}"
     retention_in_days = 7
+    # kms_key_id = ...
 }
 
 resource "aws_lambda_function" "os_cognito_user_pool_pre_signup" {
@@ -167,6 +154,14 @@ resource "aws_cognito_user" "os_cognito_user_pool_admin_user" {
 resource "aws_cognito_identity_pool" "os_cognito_identity_pool" {
     identity_pool_name               = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoIdentityPool"
     allow_unauthenticated_identities = false
+
+    lifecycle {
+    ignore_changes = [
+        # Ignore changes to cognito_identity_providers, because opensearch will
+        # update these during its deployment.
+        cognito_identity_providers,
+        ]
+    }
 }
 
 resource "aws_iam_role" "os_cognito_authentication_role" {
@@ -275,20 +270,9 @@ resource "aws_iam_service_linked_role" "os_service_linked_role" {
   aws_service_name = "es.amazonaws.com"
 }
 
-resource "aws_iam_role" "kinesis_delivery_stream_role" {
+resource "aws_iam_role" "os_kinesis_delivery_stream_role" {
     name = var.resource_prefix != "" ? "${var.resource_prefix}KinesisDeliveryStreamRole" : null
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action = "sts:AssumeRole"
-                Effect = "Allow"
-                Principal = {
-                    Federated = "firehose.amazonaws.com"
-                }
-            },
-        ]
-    })
+    assume_role_policy = data.aws_iam_policy_document.firehose_assume_role_document
 }
 
 resource "aws_acm_certificate" "os_custom_dashboards_certificate" {
@@ -314,8 +298,220 @@ resource "aws_acm_certificate_validation" "os_custom_dashboards_certificate_vali
     validation_record_fqdns = [for record in aws_route53_record.os_custom_dashboard_certificate_validation_record : record.fqdn]
 }
 
-# resource "aws_elasticsearch_domain" "opensearch" {
-#   domain_name           = var.os_domain_name
-#   elasticsearch_version = "OpenSearch_${var.os_engine_version}"
-#   access_policies       = data.aws_iam_policy_document.os_access_policy.json
-# }
+resource "aws_cloudwatch_log_group" "os_index_slow_log_group" {
+    name = "/aws/opensearch/%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchIndexSlowLogGroup"    
+    retention_in_days = 30
+    # kms_key_id = ...
+}
+
+resource "aws_cloudwatch_log_group" "os_search_slow_log_group" {
+    name = "/aws/opensearch/%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchSearchSlowLogGroup"    
+    retention_in_days = 30
+    # kms_key_id = ...
+}
+
+resource "aws_cloudwatch_log_group" "os_application_log_group" {
+    name = "/aws/opensearch/%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchApplicationLogGroup"    
+    retention_in_days = 30
+    # kms_key_id = ...
+}
+
+resource "aws_cloudwatch_log_resource_policy" "os_log_resource_policy" {
+    policy_name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchLogResourcePolicy"
+    policy_document = data.aws_iam_policy_document.os_log_resource_policy_document.json
+}
+
+resource "aws_elasticsearch_domain" "opensearch" {
+    depends_on = [
+        aws_cloudwatch_log_resource_policy.os_log_resource_policy
+    ]
+    domain_name           = var.os_domain_name
+    elasticsearch_version = "OpenSearch_${var.os_engine_version}"
+    access_policies       = data.aws_iam_policy_document.os_access_policy.json
+    cluster_config {
+        dedicated_master_enabled = local.use_master_node
+        dedicated_master_count   = local.use_master_node ? lookup(local.os_sizing_master_count, var.os_size) : null
+        dedicated_master_type    = local.use_master_node ? lookup(local.os_sizing_master_size, var.os_size) : null
+        instance_count           = lookup(local.os_sizing_node_count, var.os_size)
+        instance_type            = lookup(local.os_sizing_instance_size, var.os_size)
+        zone_awareness_enabled   = var.os_multi_az
+        dynamic "zone_awareness_config" {
+            for_each = var.os_multi_az ? [1] : []
+
+            content {
+                availability_zone_count = 2
+            }
+        }
+    }
+    cognito_options {
+        enabled           = true
+        identity_pool_id  = aws_cognito_identity_pool.os_cognito_identity_pool.id
+        role_arn          = aws_iam_role.os_cognito_role.arn
+        user_pool_id      = aws_cognito_user_pool.os_cognito_user_pool.id
+    }
+    dynamic "domain_endpoint_options" {
+        for_each = var.os_custom_dashboards_domain != "" ? [1] : []
+
+        content {
+            custom_endpoint_enabled         = true
+            custom_endpoint                 = "${var.os_domain_name}.${var.os_custom_dashboards_domain}"
+            custom_endpoint_certificate_arn = aws_acm_certificate.os_custom_dashboards_certificate.arn
+            enforce_https                   = true
+            tls_security_policy             = "Policy-Min-TLS-1-2-2019-07" 
+        }
+    }
+    ebs_options {
+        ebs_enabled = true
+        volume_size = lookup(local.os_sizing_volume_size, var.os_size)
+        volume_type = "gp2"
+    }
+    encrypt_at_rest {
+        enabled = true
+        # kms_key_id = ...
+    }
+    log_publishing_options {
+        enabled                  = true
+        log_type                 = "INDEX_SLOW_LOGS"
+        cloudwatch_log_group_arn = aws_cloudwatch_log_group.os_index_slow_log_group.arn
+    }
+
+    log_publishing_options {
+        enabled                  = true
+        log_type                 = "SEARCH_SLOW_LOGS"
+        cloudwatch_log_group_arn = aws_cloudwatch_log_group.os_search_slow_log_group.arn
+    }
+
+    log_publishing_options {
+        enabled                  = true
+        log_type                 = "ES_APPLICATION_LOGS"
+        cloudwatch_log_group_arn = aws_cloudwatch_log_group.os_application_log_group.arn
+    }
+    node_to_node_encryption {
+      enabled = true
+    }
+}
+
+resource "aws_route53_record" "os_domain_dashboard_record_set" {
+    count   = var.os_custom_dashboards_domain != "" ? 1 : 0
+    zone_id = data.aws_route53_zone.os_custom_dashboards_hosted_zone_id[count.index].zone_id
+    name    = "${var.os_domain_name}.${var.os_custom_dashboards_domain}"
+    type    = "CNAME"
+    ttl     = "300"
+    records = [ aws_elasticsearch_domain.opensearch.endpoint ]
+}
+
+resource "aws_iam_policy" "os_cognito_auth_policy" {
+    name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoAuthenticationRolePolicy"
+    policy = data.aws_iam_policy_document.os_cognito_auth_policy_document.json
+}
+
+resource "aws_iam_role_policy_attachment" "os_cognito_authentication_role_attachment" {
+    role       = aws_iam_role.os_cognito_authentication_role.name
+    policy_arn = aws_iam_policy.os_cognito_auth_policy.arn
+}
+
+resource "aws_kinesis_stream" "os_kinesis_data_stream" {
+  name             = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDataStream"
+  shard_count      = 1
+  retention_period = 24
+  encryption_type  = "KMS"
+  kms_key_id       = "alias/aws/kinesis"
+}
+
+resource "aws_s3_bucket" "os_kinesis_delivery_stream_backup_bucket_access_logs" {
+    bucket        = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }kinesisdeliverystreambackupbucketaccesslogs"
+    force_destroy = true
+}
+
+resource "aws_s3_bucket_acl" "os_kinesis_delivery_stream_backup_bucket_access_logs_acl" {
+  bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket_access_logs.id
+  acl    = "log-delivery-write"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "os_kinesis_delivery_stream_backup_bucket_access_logs_sse" {
+    bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket_access_logs.bucket
+
+    rule {
+        apply_server_side_encryption_by_default {
+            sse_algorithm = "AES256"
+        }
+    }
+}
+
+resource "aws_s3_bucket_public_access_block" "os_kinesis_delivery_stream_backup_bucket_access_logs_block" {
+    bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket_access_logs.id
+    block_public_acls = true
+    block_public_policy = true
+    ignore_public_acls = true
+    restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket" "os_kinesis_delivery_stream_backup_bucket" {
+    bucket        = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }kinesisdeliverystreambackupbucket"
+    force_destroy = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "os_kinesis_delivery_stream_backup_bucket_sse" {
+    bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.bucket
+
+    rule {
+        apply_server_side_encryption_by_default {
+            sse_algorithm = "AES256"
+        }
+    }
+}
+
+resource "aws_s3_bucket_logging" "os_kinesis_delivery_stream_backup_bucket_logging" {
+  bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.id
+  target_bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket_access_logs.id
+  target_prefix = "os-access-logs/"
+}
+
+resource "aws_s3_bucket_public_access_block" "os_kinesis_delivery_stream_backup_bucket_block" {
+    bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.id
+    block_public_acls = true
+    block_public_policy = true
+    ignore_public_acls = true
+    restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "os_kinesis_delivery_stream_backup_bucket_policy" {
+  bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.id
+  policy = data.aws_iam_policy_document.os_kinesis_delivery_stream_backup_bucket_policy_document.json
+}
+
+resource "aws_cloudwatch_log_group" "os_kinesis_delivery_stream_log_group" {
+    name = "/aws/kinesisfirehose/%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDeliveryStream"    
+    retention_in_days = 30
+    # kms_key_id = ...
+}
+
+resource "aws_cloudwatch_log_stream" "os_kinesis_delivery_stream_os_delivery_log_stream" {
+    name           = "OpenSearchDelivery"
+    log_group_name = aws_cloudwatch_log_group.os_kinesis_delivery_stream_log_group.name
+}
+
+resource "aws_cloudwatch_log_stream" "os_kinesis_delivery_stream_s3_delivery_log_stream" {
+    name           = "S3Delivery"
+    log_group_name = aws_cloudwatch_log_group.os_kinesis_delivery_stream_log_group.name
+}
+
+resource "aws_iam_policy" "os_kinesis_delivery_stream_role_policy" {
+    name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDeliveryStreamRolePolicy"
+    policy = data.aws_iam_policy_document.os_kinesis_delivery_stream_role_policy_document.json
+}
+
+resource "aws_iam_role" "os_log_data_transformer_role" {
+    name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchLogDataTransformerLambdaRole" : null    
+    assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_document.json
+}
+
+resource "aws_iam_role_policy_attachment" "os_log_data_transformer_role_attachment_basic" {
+    role       = aws_iam_role.os_log_data_transformer_role.name
+    policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "os_log_data_transformer_role_policy" {
+    name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchLogDataTransformerLambdaRolePolicy"
+    policy = data.aws_iam_policy_document.os_log_data_transformer_role_policy_document.json
+}
