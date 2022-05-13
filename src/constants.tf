@@ -21,11 +21,9 @@
 # SOFTWARE.
 #
 
-
-locals {
-    is_arm_supported_region = contains(["us-east-1", "us-west-2", "eu-central-1", "eu-west-1", "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1"], data.aws_region.current.name)
-    os_cognito_user_pool_pre_signup_lambda_function_name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoUserPoolPreSignUp"
-}
+# ##################################################################################################
+# Constants
+# ##################################################################################################
 
 locals {
     os_sizing_node_count = {
@@ -58,8 +56,4 @@ locals {
         M  = 40
         L  = 80
     }
-}
-
-locals {
-    use_master_node     = lookup(local.os_sizing_master_count, var.os_size) != 0
 }

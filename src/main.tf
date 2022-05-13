@@ -47,43 +47,6 @@ resource "random_string" "unique_id" {
     special = false  
 }
 
-resource "aws_iam_role" "os_cognito_user_pool_pre_signup_role" {
-    name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchCognitoUserPoolPreSignUpRole" : null    
-    assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_document.json
-}
-
-resource "aws_iam_role_policy_attachment" "os_cognito_user_pool_pre_signup_role_attachment_basic" {
-    role       = aws_iam_role.os_cognito_user_pool_pre_signup_role.name
-    policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_cloudwatch_log_group" "os_cognito_user_pool_pre_signup_log_group" {
-    name = "/aws/lambda/${local.os_cognito_user_pool_pre_signup_lambda_function_name}"
-    retention_in_days = 7
-    # kms_key_id = ...
-}
-
-resource "aws_lambda_function" "os_cognito_user_pool_pre_signup" {
-    depends_on = [
-        aws_cloudwatch_log_group.os_cognito_user_pool_pre_signup_log_group
-    ]
-    function_name = "${local.os_cognito_user_pool_pre_signup_lambda_function_name}"
-    architectures = local.is_arm_supported_region ? ["arm64"] : ["x86_64"]
-    filename = "${path.module}/.package/email_pre_signup.zip"
-    handler = "email_pre_signup.lambda_handler"
-    runtime = "python3.9"
-    memory_size = 128
-    timeout = 60
-    role = aws_iam_role.os_cognito_user_pool_pre_signup_role.arn
-    environment {
-      variables = {
-        "LOG_LEVEL" = "info",
-        "EMAIL_VALIDATION_REGEX" = "${var.os_dashboards_allowed_email_signup_regex}",
-        "AUTO_CONFIRM_USER" = "${tostring(var.os_dashboards_auto_confirm_user)}"
-      }
-    }
-}
-
 resource "aws_cognito_user_pool" "os_cognito_user_pool" {
     name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoUserPool"
     account_recovery_setting {
@@ -164,28 +127,30 @@ resource "aws_cognito_identity_pool" "os_cognito_identity_pool" {
     }
 }
 
+data "aws_iam_policy_document" "os_cognito_authentication_assume_role_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [ "sts:AssumeRoleWithWebIdentity" ]
+        condition {
+            test     = "StringEquals"
+            variable = "cognito-identity.amazonaws.com:aud"
+            values   = [ "${aws_cognito_identity_pool.os_cognito_identity_pool.id}" ]
+        }
+        condition {
+            test     = "ForAnyValue:StringLike"
+            variable = "cognito-identity.amazonaws.com:amr"
+            values   = [ "authenticated" ]
+        }
+        principals {
+            type        = "Federated"
+            identifiers = [ "cognito-identity.amazonaws.com" ]            
+        }
+    }
+}
+
 resource "aws_iam_role" "os_cognito_authentication_role" {
     name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchCognitoAuthenticationRole" : null
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action = "sts:AssumeRoleWithWebIdentity"
-                Condition = {
-                    "StringEquals" = {
-                        "cognito-identity.amazonaws.com:aud" = "${aws_cognito_identity_pool.os_cognito_identity_pool.id}"
-                    },
-                    "ForAnyValue:StringLike" = {
-                        "cognito-identity.amazonaws.com:amr": "authenticated"
-                    }
-                }
-                Effect = "Allow"
-                Principal = {
-                    Federated = "cognito-identity.amazonaws.com"
-                }
-            },
-        ]
-    })
+    assume_role_policy = data.aws_iam_policy_document.os_cognito_authentication_assume_role_policy_document.json
 }
 
 resource "aws_cognito_identity_pool_roles_attachment" "os_cognito_authentication_role_attachment" {
@@ -197,44 +162,32 @@ resource "aws_cognito_identity_pool_roles_attachment" "os_cognito_authentication
 
 resource "aws_iam_role" "os_cognito_role" {
     name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchCognitoRole" : null
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action = "sts:AssumeRole"
-                Effect = "Allow"
-                Principal = {
-                    Service = "es.amazonaws.com"
-                }
-            },
+    assume_role_policy = data.aws_iam_policy_document.opensearch_assume_role_policy_document.json
+}
+
+data "aws_iam_policy_document" "os_cognito_access_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [ 
+            "cognito-idp:DescribeUserPool",
+            "cognito-idp:CreateUserPoolClient",
+            "cognito-idp:DeleteUserPoolClient",
+            "cognito-idp:DescribeUserPoolClient",
+            "cognito-idp:AdminInitiateAuth",
+            "cognito-idp:AdminUserGlobalSignOut",
+            "cognito-idp:ListUserPoolClients",
+            "cognito-identity:DescribeIdentityPool",
+            "cognito-identity:UpdateIdentityPool",
+            "cognito-identity:SetIdentityPoolRoles",
+            "cognito-identity:GetIdentityPoolRoles",
         ]
-    })
+        resources = [ "*" ]
+    }
 }
 
 resource "aws_iam_policy" "os_cognito_access_policy" {
     name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoAccess"
-    policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action   = [
-                    "cognito-idp:DescribeUserPool",
-                    "cognito-idp:CreateUserPoolClient",
-                    "cognito-idp:DeleteUserPoolClient",
-                    "cognito-idp:DescribeUserPoolClient",
-                    "cognito-idp:AdminInitiateAuth",
-                    "cognito-idp:AdminUserGlobalSignOut",
-                    "cognito-idp:ListUserPoolClients",
-                    "cognito-identity:DescribeIdentityPool",
-                    "cognito-identity:UpdateIdentityPool",
-                    "cognito-identity:SetIdentityPoolRoles",
-                    "cognito-identity:GetIdentityPoolRoles",
-                ]
-                Effect   = "Allow"
-                Resource = "*"
-            }
-        ]
-    })
+    policy = data.aws_iam_policy_document.os_cognito_access_policy_document.json
 }
 
 resource "aws_iam_role_policy_attachment" "os_cognito_role_attachment_access" {
@@ -242,23 +195,22 @@ resource "aws_iam_role_policy_attachment" "os_cognito_role_attachment_access" {
     policy_arn = aws_iam_policy.os_cognito_access_policy.arn
 }
 
+data "aws_iam_policy_document" "os_cognito_default_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [ "iam:PassRole" ]
+        resources = [ aws_iam_role.os_cognito_role.arn ]
+        condition {
+            test     = "StringLike"
+            variable = "iam:PassedToService"
+            values   = [ "cognito-identity.amazonaws.com" ]
+        }
+    }
+}
+
 resource "aws_iam_policy" "os_cognito_default_policy" {
     name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoRoleDefaultPolicy"
-    policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action   = ["iam:PassRole"]
-                Condition = {
-                    "StringLike" = {
-                        "iam:PassedToService" = "cognito-identity.amazonaws.com"
-                    }
-                }
-                Effect   = "Allow"
-                Resource = aws_iam_role.os_cognito_role.arn
-            }
-        ]
-    })
+    policy = data.aws_iam_policy_document.os_cognito_default_policy_document.json
 }
 
 resource "aws_iam_role_policy_attachment" "os_cognito_role_attachment_default" {
@@ -270,16 +222,16 @@ resource "aws_iam_service_linked_role" "os_service_linked_role" {
   aws_service_name = "es.amazonaws.com"
 }
 
-resource "aws_iam_role" "os_kinesis_delivery_stream_role" {
-    name = var.resource_prefix != "" ? "${var.resource_prefix}KinesisDeliveryStreamRole" : null
-    assume_role_policy = data.aws_iam_policy_document.firehose_assume_role_document
-}
-
 resource "aws_acm_certificate" "os_custom_dashboards_certificate" {
     count = var.os_custom_dashboards_domain != "" ? 1 : 0
     provider          = aws.acm_provider
     domain_name       = "${var.os_domain_name}.${var.os_custom_dashboards_domain}"
     validation_method = "DNS"
+}
+
+data "aws_route53_zone" "os_custom_dashboards_hosted_zone_id" {
+    count = var.os_custom_dashboards_domain != "" ? 1 : 0
+    name  = "${var.os_custom_dashboards_domain}"
 }
 
 resource "aws_route53_record" "os_custom_dashboard_certificate_validation_record" {
@@ -316,18 +268,83 @@ resource "aws_cloudwatch_log_group" "os_application_log_group" {
     # kms_key_id = ...
 }
 
+data "aws_iam_policy_document" "os_log_resource_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "logs:PutLogEvents",
+            "logs:PutLogEventsBatch",
+            "logs:CreateLogStream"
+        ]
+        resources = ["arn:aws:logs:*"]
+
+        principals {
+            type        = "Service"
+            identifiers = [ "es.amazonaws.com" ]
+        }
+    }
+}
+
 resource "aws_cloudwatch_log_resource_policy" "os_log_resource_policy" {
     policy_name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchLogResourcePolicy"
     policy_document = data.aws_iam_policy_document.os_log_resource_policy_document.json
 }
 
+data "aws_iam_policy_document" "os_access_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "es:ESHttpGet",
+            "es:ESHttpDelete",
+            "es:ESHttpPut",
+            "es:ESHttpPost",
+            "es:ESHttpHead",
+            "es:ESHttpPatch"
+        ]
+        resources = ["arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/*"]
+
+        principals {
+            type        = "AWS"
+            identifiers = [ aws_iam_role.os_cognito_authentication_role.arn ]
+        }
+        dynamic "condition" {
+            for_each = var.os_dashboards_allowed_cidrs != "" ? [1] : []
+
+            content {
+                test     = "IpAddress"
+                variable = "aws:SourceIp"
+                values   = split(",", var.os_dashboards_allowed_cidrs)
+            }
+        }
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [
+            "es:DescribeElasticsearchDomain",
+            "es:DescribeElasticsearchDomains",
+            "es:DescribeElasticsearchDomainConfig",
+            "es:ESHttpPost",
+            "es:ESHttpPut",
+            "es:HttpGet"
+        ]
+        resources = ["arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/*"]
+
+        principals {
+            type        = "AWS"
+            identifiers = [ aws_iam_role.os_kinesis_delivery_stream_role.arn ]
+        }
+    }
+}
+
 resource "aws_elasticsearch_domain" "opensearch" {
     depends_on = [
-        aws_cloudwatch_log_resource_policy.os_log_resource_policy
+        aws_cloudwatch_log_resource_policy.os_log_resource_policy,
+        aws_iam_service_linked_role.os_service_linked_role
     ]
     domain_name           = var.os_domain_name
     elasticsearch_version = "OpenSearch_${var.os_engine_version}"
-    access_policies       = data.aws_iam_policy_document.os_access_policy.json
+    access_policies       = data.aws_iam_policy_document.os_access_policy_document.json
     cluster_config {
         dedicated_master_enabled = local.use_master_node
         dedicated_master_count   = local.use_master_node ? lookup(local.os_sizing_master_count, var.os_size) : null
@@ -400,6 +417,21 @@ resource "aws_route53_record" "os_domain_dashboard_record_set" {
     records = [ aws_elasticsearch_domain.opensearch.endpoint ]
 }
 
+data "aws_iam_policy_document" "os_cognito_auth_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "es:ESHttpGet",
+            "es:ESHttpDelete",
+            "es:ESHttpPut",
+            "es:ESHttpPost",
+            "es:ESHttpHead",
+            "es:ESHttpPatch"
+        ]
+        resources = [ aws_elasticsearch_domain.opensearch.arn ]
+    }
+}
+
 resource "aws_iam_policy" "os_cognito_auth_policy" {
     name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchCognitoAuthenticationRolePolicy"
     policy = data.aws_iam_policy_document.os_cognito_auth_policy_document.json
@@ -410,12 +442,13 @@ resource "aws_iam_role_policy_attachment" "os_cognito_authentication_role_attach
     policy_arn = aws_iam_policy.os_cognito_auth_policy.arn
 }
 
-resource "aws_kinesis_stream" "os_kinesis_data_stream" {
-  name             = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDataStream"
-  shard_count      = 1
-  retention_period = 24
-  encryption_type  = "KMS"
-  kms_key_id       = "alias/aws/kinesis"
+# ##################################################################################################
+# Resources for the Kinesis Delivery Stream used to forward transformed events to OpenSearch
+# ##################################################################################################
+
+resource "aws_iam_role" "os_kinesis_delivery_stream_role" {
+    name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchKinesisDeliveryStreamRole" : null
+    assume_role_policy = data.aws_iam_policy_document.firehose_assume_role_policy_document.json
 }
 
 resource "aws_s3_bucket" "os_kinesis_delivery_stream_backup_bucket_access_logs" {
@@ -475,6 +508,24 @@ resource "aws_s3_bucket_public_access_block" "os_kinesis_delivery_stream_backup_
     restrict_public_buckets = true
 }
 
+data "aws_iam_policy_document" "os_kinesis_delivery_stream_backup_bucket_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "s3:Put*",
+            "s3:Get*"
+        ]
+        principals {
+            type        = "AWS"
+            identifiers = [ aws_iam_role.os_kinesis_delivery_stream_role.arn ]
+        }
+        resources = [ 
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}",
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}/*" 
+        ]
+    }
+}
+
 resource "aws_s3_bucket_policy" "os_kinesis_delivery_stream_backup_bucket_policy" {
   bucket = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.id
   policy = data.aws_iam_policy_document.os_kinesis_delivery_stream_backup_bucket_policy_document.json
@@ -496,22 +547,153 @@ resource "aws_cloudwatch_log_stream" "os_kinesis_delivery_stream_s3_delivery_log
     log_group_name = aws_cloudwatch_log_group.os_kinesis_delivery_stream_log_group.name
 }
 
+data "aws_iam_policy_document" "os_kinesis_delivery_stream_role_policy_document" {
+    statement {
+        effect = "Allow"
+        actions = [
+            "s3:AbortMultipartUpload",
+            "s3:GetBucketLocation",
+            "s3:GetObject",
+            "s3:ListBucket",
+            "s3:ListBucketMultipartUploads"
+        ]
+        resources = [ 
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}",
+            "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}/*" 
+        ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [
+            "ec2:DescribeVpcs",
+            "ec2:DescribeVpcAttribute",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:CreateNetworkInterface",
+            "ec2:CreateNetworkInterfacePermission",
+            "ec2:DeleteNetworkInterface"
+        ]
+        resources = [ "*" ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [
+            "es:DescribeElasticsearchDomain",
+            "es:DescribeElasticsearchDomains",
+            "es:DescribeElasticsearchDomainConfig",
+            "es:ESHttpPost",
+            "es:ESHttpPut"
+        ]
+        resources = [ 
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}",
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/*" 
+        ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [ "es:ESHttpGet" ]
+        resources = [ 
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/_all/_settings",
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/_cluster/stats", 
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/${var.os_index_name}/_mapping/kinesis'",
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/_nodes", 
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/_nodes/*/stats",
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/_stats", 
+            "arn:${data.aws_partition.current.partition}:es:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:domain/${var.os_domain_name}/${var.os_index_name}/_stats"
+        ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [ 
+            "logs:PutLogEvents",
+            "logs:CreateLogStream"
+        ]
+        resources = [ aws_cloudwatch_log_group.os_kinesis_delivery_stream_log_group.arn ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [ 
+            "kms:GenerateDataKey",
+            "kms:Decrypt"
+        ]
+        condition {
+            test     = "StringEquals"
+            variable = "kms:ViaService"
+            values   = [ "s3.${data.aws_region.current.name}.amazonaws.com" ]
+        }
+        condition {
+            test     = "StringLike"
+            variable = "kms:EncryptionContext:aws:s3:arn"
+            values   = [ "${aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn}/*" ]
+        }
+        resources = [ "arn:${data.aws_partition.current.partition}:kms:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:key/*" ]
+    }
+
+    statement {
+        effect = "Allow"
+        actions = [ 
+            "kms:GenerateDataKey",
+            "kms:Decrypt"
+        ]
+        condition {
+            test     = "StringEquals"
+            variable = "kms:ViaService"
+            values   = [ "kinesis.${data.aws_region.current.name}.amazonaws.com" ]
+        }
+        condition {
+            test     = "StringLike"
+            variable = "kms:EncryptionContext:aws:kinesis:arn"
+            values   = [ aws_kinesis_stream.os_kinesis_data_stream.arn ]
+        }
+        resources = [ "arn:${data.aws_partition.current.partition}:kms:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:key/*" ]
+    }
+}
+
 resource "aws_iam_policy" "os_kinesis_delivery_stream_role_policy" {
     name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDeliveryStreamRolePolicy"
     policy = data.aws_iam_policy_document.os_kinesis_delivery_stream_role_policy_document.json
 }
 
-resource "aws_iam_role" "os_log_data_transformer_role" {
-    name = var.resource_prefix != "" ? "${var.resource_prefix}OpenSearchLogDataTransformerLambdaRole" : null    
-    assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_document.json
-}
+resource "aws_iam_role_policy_attachment" "os_kinesis_delivery_stream_role_attachment" {
+    role       = aws_iam_role.os_kinesis_delivery_stream_role.name
+    policy_arn = aws_iam_policy.os_kinesis_delivery_stream_role_policy.arn
+} 
 
-resource "aws_iam_role_policy_attachment" "os_log_data_transformer_role_attachment_basic" {
-    role       = aws_iam_role.os_log_data_transformer_role.name
-    policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_iam_policy" "os_log_data_transformer_role_policy" {
-    name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchLogDataTransformerLambdaRolePolicy"
-    policy = data.aws_iam_policy_document.os_log_data_transformer_role_policy_document.json
+resource "aws_kinesis_firehose_delivery_stream" "os_kinesis_delivery_stream" {
+    name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchFirehose"
+    destination = "elasticsearch"
+    server_side_encryption {
+        enabled  = true
+        key_type = "AWS_OWNED_CMK"
+        # key_type = "CUSTOMER_MANAGED_CMK"
+        # kms_arn = ...
+    }
+    elasticsearch_configuration {
+        cloudwatch_logging_options {
+            enabled         = true
+            log_group_name  = aws_cloudwatch_log_group.os_kinesis_delivery_stream_log_group.name
+            log_stream_name = aws_cloudwatch_log_stream.os_kinesis_delivery_stream_os_delivery_log_stream.name
+        }
+        domain_arn = aws_elasticsearch_domain.opensearch.arn
+        index_name = var.os_index_name
+        index_rotation_period = "OneDay"
+        role_arn = aws_iam_role.os_kinesis_delivery_stream_role.arn
+        s3_backup_mode = "AllDocuments"
+    }
+    s3_configuration {
+        bucket_arn = aws_s3_bucket.os_kinesis_delivery_stream_backup_bucket.arn
+        cloudwatch_logging_options {
+            enabled         = true
+            log_group_name  = aws_cloudwatch_log_group.os_kinesis_delivery_stream_log_group.name
+            log_stream_name = aws_cloudwatch_log_stream.os_kinesis_delivery_stream_s3_delivery_log_stream.name
+        }
+        compression_format = "GZIP"
+        role_arn = aws_iam_role.os_kinesis_delivery_stream_role.arn
+    }
 }

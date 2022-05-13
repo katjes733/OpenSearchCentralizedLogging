@@ -23,7 +23,9 @@ SOFTWARE.
 
 Lambda function to support advanced deployments
 """
-import os, logging, re
+import os
+import logging
+import re
 
 levels = {
     'critical': logging.CRITICAL,
@@ -48,11 +50,12 @@ def lambda_handler(event, context):
     Returns:
         dictionary: The incoming event with autoConfirmUser set accordingly
     """
-    logger.info("event: %s", event)
-    logger.debug("context: %s", context)
+    logger.info("Event: %s", event)
+    logger.debug("Context: %s", context)
     email = event['request']['userAttributes']['email']
     pattern = re.compile(f"{os.getenv('EMAIL_VALIDATION_REGEX', '^.*$')}")
-    assert pattern.match(email), f": Email {email} is not allowed to sign up. Please contact the administrator if you believe you are getting this in error"
+    assert pattern.match(email), f": Email {email} is not allowed to sign up. \
+        Please contact the administrator if you believe you are getting this in error"
     event['response']['autoConfirmUser'] = os.getenv('AUTO_CONFIRM_USER', 'false').lower() == 'true'
     logger.debug("Outgoing event: %s", event)
     return event

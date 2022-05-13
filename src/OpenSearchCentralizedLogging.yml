@@ -384,9 +384,9 @@ Resources:
               cw = boto3.client('logs')
               allRegions = get_all_regions()
               if rt == 'Create' or rt == 'Update':
-                  regions = allRegions if rp['Regions'] else rp['Regions']
-                  if all(r in regions for r in allRegions):    
-                      delete_cloudwatch_destinations(rp['DestinationName'], regions)
+                  regions = allRegions if not rp['Regions'] else rp['Regions']
+                  if all(r in allRegions for r in regions):    
+                      delete_cloudwatch_destinations(rp['DestinationName'], allRegions)
                       create_cloudwatch_destinations(regions, rp['DestinationName'], rp['RoleArn'], rp['DataStreamArn'], rp['SpokeAccounts'])
 
               if rt == 'Delete':
@@ -913,6 +913,18 @@ Resources:
         Version: 2012-10-17
       Roles:
         - !Ref LogDataTransformerLambdaRole
+  LogDataTransformerLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "No critical data in logs"
+    Properties:
+      RetentionInDays: 1
+      LogGroupName: !Sub 
+        - '/aws/lambda/${ResourcePrefix}OpenSearchKinesisLogDataTransformer'
+        - { ResourcePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
   LogDataTransformerLambda:
     Type: 'AWS::Lambda::Function'
     Metadata:
@@ -930,10 +942,11 @@ Resources:
             reason: "No concurrency needed"
     DependsOn:
       - LogDataTransformerLambdaRolePolicy
+      - LogDataTransformerLogGroup
     Properties: 
       FunctionName: !Sub 
-        - '${FunctionNamePrefix}LogDataTransformerLambda'
-        - { FunctionNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }     
+        - '${ResourcePrefix}OpenSearchKinesisLogDataTransformer'
+        - { ResourcePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }     
       Architectures:  
         - !If 
           - IsArmSupportedRegion
@@ -1174,7 +1187,9 @@ Resources:
     Properties:
       DeliveryStreamEncryptionConfigurationInput:
         KeyType: AWS_OWNED_CMK
-      DeliveryStreamName: OpenSearch-Firehose
+      DeliveryStreamName: !Sub 
+        - '${ResourcePrefix}OpenSearchFirehose'
+        - { ResourcePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
       DeliveryStreamType: DirectPut
       ElasticsearchDestinationConfiguration:
         CloudWatchLoggingOptions:
@@ -1196,6 +1211,7 @@ Resources:
               - '/aws/kinesisfirehose/${LogGroupNamePrefix}KinesisDeliveryStream'
               - { LogGroupNamePrefix: !If [UseSpecificResourcePrefix, !Ref ResourcePrefix, !Ref AWS::StackName] }
             LogStreamName: !Ref KinesisDeliveryStreamS3DeliveryLogStream
+          CompressionFormat: GZIP
           RoleARN: !GetAtt KinesisDeliveryStreamRole.Arn
   CloudWatchDestinationRole:
     Type: 'AWS::IAM::Role'

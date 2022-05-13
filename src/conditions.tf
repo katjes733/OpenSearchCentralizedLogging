@@ -21,32 +21,14 @@
 # SOFTWARE.
 #
 
-aws_region = "us-east-1"
+# ##################################################################################################
+# Conditions
+# ##################################################################################################
 
-resource_prefix = "mac-re-"
+locals {
+    is_arm_supported_region = contains(["us-east-1", "us-west-2", "eu-central-1", "eu-west-1", "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1"], data.aws_region.current.name)
+}
 
-os_domain_name = "mac-re-cwl"
-
-os_size = "XS"
-
-os_multi_az = false
-
-os_engine_version = "1.2"
-
-os_index_name = "cwl"
-
-os_custom_dashboards_domain = ""
-
-os_admin_email = "martin.macecek@rearc.io"
-
-os_dashboards_allowed_email_signup_regex = "^.*(@rearc.io)$"
-
-os_dashboards_auto_confirm_user = false
-
-os_dashboards_allowed_cidrs = ""
-
-spoke_regions = ""
-
-spoke_accounts = ""
-
-destination_name = "Central-CloudWatch-Logging"
+locals {
+    use_master_node         = lookup(local.os_sizing_master_count, var.os_size) != 0
+}

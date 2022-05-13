@@ -80,6 +80,17 @@ variable "os_engine_version" {
     }
 }
 
+variable "os_index_name" {
+    description = "The name of the index in OpenSearch."
+    type        = string
+    default     = "cwl"
+
+    validation {
+        condition     = can(regex("^[\\w\\-]{1,80}$", var.os_index_name))
+        error_message = "The OpenSearch index name must alphanumeric string including - and _ and no more than 80 characters."
+    }
+}
+
 variable "os_custom_dashboards_domain" {
     description = "Domain for the Custom OpenSearch Dashboards."
     type        = string
@@ -120,5 +131,38 @@ variable "os_dashboards_allowed_cidrs" {
     validation {
         condition     = can(regex("^$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))(,(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2])))*$", var.os_dashboards_allowed_cidrs))
         error_message = "Must be a valid list of comma separated CIDRs."
+    }
+}
+
+variable "spoke_regions" {
+    description = "The comma separated list of regions to be supported. Leave empty for all regions."
+    type        = string
+    default     = ""
+
+    validation {
+        condition     = can(regex("^$|^[a-z]{2}-(?:gov-){0,1}(?:north|northeast|east|southeast|south|southwest|west|northwest|central)-[1-9]{1}(?:,[a-z]{2}-(?:gov-){0,1}(?:north|northeast|east|southeast|south|southwest|west|northwest|central)-[1-9]{1})*$", var.spoke_regions))
+        error_message = "Must be a valid list of comma separated regions or empty."
+    }
+}
+
+variable "spoke_accounts" {
+    description = "The comma separated list of accounts that may deliver logs. Leave empty for current account only."
+    type        = string
+    default     = ""
+
+    validation {
+        condition     = can(regex("^$|^\\d{12}(?:,\\d{12})*$", var.spoke_accounts))
+        error_message = "Must be a valid list of comma separated account IDs or empty."
+    }
+}
+
+variable "destination_name" {
+    description = "The name of the destination for each region."
+    type        = string
+    default     = "Central-CloudWatch-Logging"
+
+    validation {
+        condition     = can(regex("^[^:*]*$", var.destination_name))
+        error_message = "Must be a valid destination name."
     }
 }
