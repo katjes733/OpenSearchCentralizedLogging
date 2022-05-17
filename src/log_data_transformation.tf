@@ -89,7 +89,7 @@ resource "aws_cloudwatch_log_group" "os_kinesis_log_data_transformer_log_group" 
 
 data "archive_file" "log_data_transformer" {
     type = "zip"
-    source_file = "${path.module}/python/log_data_transformer.py"
+    source_file = "${path.module}/../python/log_data_transformer.py"
     output_path = "${path.module}/.package/log_data_transformer.zip"
 }
 

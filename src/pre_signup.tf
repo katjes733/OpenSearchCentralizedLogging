@@ -48,7 +48,7 @@ resource "aws_cloudwatch_log_group" "os_cognito_user_pool_pre_signup_log_group" 
 
 data "archive_file" "email_pre_signup" {
     type = "zip"
-    source_file = "${path.module}/python/email_pre_signup.py"
+    source_file = "${path.module}/../python/email_pre_signup.py"
     output_path = "${path.module}/.package/email_pre_signup.zip"
 }
 

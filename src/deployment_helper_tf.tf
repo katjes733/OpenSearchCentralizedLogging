@@ -71,7 +71,7 @@ resource "aws_cloudwatch_log_group" "deployment_helper_tf_log_group" {
 
 data "archive_file" "deployment_helper_tf" {
     type = "zip"
-    source_file = "${path.module}/python/deployment_helper_tf.py"
+    source_file = "${path.module}/../python/deployment_helper_tf.py"
     output_path = "${path.module}/.package/deployment_helper_tf.zip"
 }
 
