@@ -32,8 +32,39 @@ variable "aws_region" {
     }
 }
 
+variable "tag_owner" {
+    description = "value"
+    type        = string
+
+    validation {
+        condition     = can(regex("^[\\w\\.]+\\@[\\w]+\\.[a-z]+$", var.tag_owner))
+        error_message = "Must be a valid email address for the owner."
+    }
+}
+
+variable "tag_type" {
+    description = "value"
+    type        = string
+    default     = "Internal"
+
+    validation {
+        condition     = can(regex("^Internal|External$", var.tag_type))
+        error_message = "Must be one of the following values only: Internal or External."
+    }
+}
+
+variable "tag_usage" {
+    description = "value"
+    type        = string
+
+    validation {
+        condition     = can(regex("^Playground|Development|Qualification|Production|Control Tower$", var.tag_usage))
+        error_message = "Must be one of the following values only: Playground, Development, Qualification, Production or Control Tower."
+    }
+}
+
 variable "resource_prefix" {
-    description = "The prefix for all resources. If empty, uniquenss of resource names is ensured."
+    description = "The prefix for all resources. If empty, uniquness of resource names is ensured."
     type        = string
     default     = "mac-"
 

@@ -4,3 +4,4 @@ terraform.tfstate.backup
 .terraform
 .package
 .terraform.tfstate.lock.info
+response.json

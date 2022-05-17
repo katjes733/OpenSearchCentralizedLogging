@@ -25,6 +25,10 @@ data "aws_partition" "current" {}
 
 data "aws_region" "current" {}
 
+data "aws_regions" "all_regions" {
+  all_regions = true
+}
+
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "lambda_assume_role_policy_document" {

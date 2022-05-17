@@ -28,11 +28,11 @@
 # ##################################################################################################
 
 resource "aws_kinesis_stream" "os_kinesis_data_stream" {
-  name             = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDataStream"
-  shard_count      = 1
-  retention_period = 24
-  encryption_type  = "KMS"
-  kms_key_id       = "alias/aws/kinesis"
+    name             = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }OpenSearchKinesisDataStream"
+    shard_count      = 1
+    retention_period = 24
+    encryption_type  = "KMS"
+    kms_key_id       = "alias/aws/kinesis"
 }
 
 resource "aws_iam_role" "os_cw_destination_role" {
@@ -80,28 +80,6 @@ resource "aws_iam_role_policy_attachment" "deployment_helper_tf_role_attachment_
 }
 
 # ##################################################################################################
-# Creation of CloudWatch Destinations
-# ##################################################################################################
-data "aws_lambda_invocation" "os_cw_destinations_creation" {
-    depends_on = [
-        aws_lambda_function.deployment_helper_tf,
-        aws_iam_role_policy_attachment.deployment_helper_tf_role_attachment_add
-    ]
-    function_name = aws_lambda_function.deployment_helper_tf.function_name
-    input = jsonencode({
-        "ResourceType" = "Custom::CloudWatchDestination",
-        "RequestType"  = "Create",
-        "ResourceProperties": {
-            "Regions"           = var.spoke_regions,
-            "DestinationName"   = var.destination_name,
-            "RoleArn"           = aws_iam_role.os_cw_destination_role.arn,
-            "DataStreamArn"     = aws_kinesis_stream.os_kinesis_data_stream.arn
-            "SpokeAccounts"     = var.spoke_accounts != "" ? var.spoke_accounts : data.aws_caller_identity.current.account_id
-        }
-    })
-}
-
-# ##################################################################################################
 # Deletion of CloudWatch Destinations
 # ##################################################################################################
 resource "null_resource" "os_cw_destinations_deletion" {
@@ -122,25 +100,50 @@ resource "null_resource" "os_cw_destinations_deletion" {
     }
     provisioner "local-exec" {
         when    = destroy
-        command = <<-COMMAND
+        command = replace(<<-COMMAND
             aws lambda invoke \
             --cli-binary-format raw-in-base64-out \
             --log-type Tail \
             --region ${self.triggers.region} \
             --function-name ${self.triggers.function_name} \
-            --payload '{
-                "ResourceType": "Custom::CloudWatchDestination",
-                "RequestType": "Create",
-                "ResourceProperties": {
-                    "ServiceToken": "${self.triggers.service_token}",
-                    "Regions": "${self.triggers.regions}",
-                    "DestinationName": "${self.triggers.destination_name}",
-                    "RoleArn": "${self.triggers.role_arn}",
-                    "DataStreamArn": "${self.triggers.data_stream_arn}",
-                    "SpokeAccounts": "${self.triggers.spoke_accounts}"
+            --payload {
+                "ResourceType":"Custom::CloudWatchDestination",
+                "RequestType":"Delete",
+                "ResourceProperties":{
+                    "ServiceToken":"${self.triggers.service_token}",
+                    "Regions":"${self.triggers.regions}",
+                    "DestinationName":"${self.triggers.destination_name}",
+                    "RoleArn":"${self.triggers.role_arn}",
+                    "DataStreamArn":"${self.triggers.data_stream_arn}",
+                    "SpokeAccounts":"${self.triggers.spoke_accounts}"
                 }
-            }' \
+            } \
             response.json
         COMMAND
+        , "/(\\\\)*\\r\\n\\s*/", "")
     }
+}
+
+# ##################################################################################################
+# Creation of CloudWatch Destinations
+# Depends on null_resource.os_cw_destinations_deletion to ensure execution on delete BEFORE
+# ##################################################################################################
+data "aws_lambda_invocation" "os_cw_destinations_creation" {
+    depends_on = [
+        aws_lambda_function.deployment_helper_tf,
+        aws_iam_role_policy_attachment.deployment_helper_tf_role_attachment_add,
+        null_resource.os_cw_destinations_deletion
+    ]
+    function_name = aws_lambda_function.deployment_helper_tf.function_name
+    input = jsonencode({
+        "ResourceType" = "Custom::CloudWatchDestination",
+        "RequestType"  = "Create",
+        "ResourceProperties": {
+            "Regions"           = var.spoke_regions,
+            "DestinationName"   = var.destination_name,
+            "RoleArn"           = aws_iam_role.os_cw_destination_role.arn,
+            "DataStreamArn"     = aws_kinesis_stream.os_kinesis_data_stream.arn
+            "SpokeAccounts"     = var.spoke_accounts != "" ? var.spoke_accounts : data.aws_caller_identity.current.account_id
+        }
+    })
 }

@@ -22,23 +22,37 @@
 #
 
 terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.13.0"
+    required_providers {
+        aws = {
+        source  = "hashicorp/aws"
+        version = "~> 4.13.0"
+        }
     }
-  }
 
-  required_version = ">= 0.14.9"
+    required_version = ">= 0.14.9"
 }
 
 provider "aws" {
-  region  = var.aws_region
+    region  = var.aws_region
+    default_tags {
+        tags = {
+            Owner = var.tag_owner
+            Type  = var.tag_type
+            Usage = var.tag_usage
+        }
+    }
 }
 
 provider "aws" {
-  alias      = "acm_provider"
-  region     = "us-east-1"
+    alias      = "acm_provider"
+    region     = "us-east-1"
+    default_tags {
+        tags = {
+            Owner = var.tag_owner
+            Type  = var.tag_type
+            Usage = var.tag_usage
+        }
+    }
 }
 
 resource "random_string" "unique_id" {
