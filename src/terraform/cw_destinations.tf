@@ -58,92 +58,309 @@ resource "aws_iam_role_policy_attachment" "os_cw_destination_role_attachment" {
     policy_arn = aws_iam_policy.os_cw_destination_role_policy.arn
 }
 
-# ##################################################################################################
-# Special Policy required for Deployment Helper Terraform 
-# ##################################################################################################
-data "aws_iam_policy_document" "deployment_helper_tf_role_policy_document_add" {
-    statement {
-        effect = "Allow"
-        actions = [ "iam:PassRole" ]
-        resources = [ aws_iam_role.os_cw_destination_role.arn ]
-    }
-}
-
-resource "aws_iam_policy" "deployment_helper_tf_role_policy_add" {
-    name = "%{ if var.resource_prefix != "" }${var.resource_prefix}%{ else }${random_string.unique_id}-%{ endif }DeploymentHelperTerraformAddRolePolicy"
-    policy = data.aws_iam_policy_document.deployment_helper_tf_role_policy_document_add.json
-}
-
-resource "aws_iam_role_policy_attachment" "deployment_helper_tf_role_attachment_add" {
-    role       = aws_iam_role.deployment_helper_tf_role.name
-    policy_arn = aws_iam_policy.deployment_helper_tf_role_policy_add.arn
-}
-
-# ##################################################################################################
-# Deletion of CloudWatch Destinations
-# ##################################################################################################
-resource "null_resource" "os_cw_destinations_deletion" {
+module "ap-northeast-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ap-northeast-1")) ? 1 : 0
     depends_on = [
-        aws_lambda_function.deployment_helper_tf,
-        aws_iam_role_policy_attachment.deployment_helper_tf_role_attachment_add
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    triggers = { 
-        region           = data.aws_region.current.name
-        function_name    = aws_lambda_function.deployment_helper_tf.function_name 
-        service_token    = aws_lambda_function.deployment_helper_tf.arn
-        regions          = var.spoke_regions
-        destination_name = var.destination_name
-        role_arn         = aws_iam_role.os_cw_destination_role.arn
-        data_stream_arn  = aws_kinesis_stream.os_kinesis_data_stream.arn
-        spoke_accounts   = var.spoke_accounts != "" ? var.spoke_accounts : data.aws_caller_identity.current.account_id
 
-    }
-    provisioner "local-exec" {
-        when    = destroy
-        command = replace(<<-COMMAND
-            aws lambda invoke \
-            --cli-binary-format raw-in-base64-out \
-            --log-type Tail \
-            --region ${self.triggers.region} \
-            --function-name ${self.triggers.function_name} \
-            --payload {
-                "ResourceType":"Custom::CloudWatchDestination",
-                "RequestType":"Delete",
-                "ResourceProperties":{
-                    "ServiceToken":"${self.triggers.service_token}",
-                    "Regions":"${self.triggers.regions}",
-                    "DestinationName":"${self.triggers.destination_name}",
-                    "RoleArn":"${self.triggers.role_arn}",
-                    "DataStreamArn":"${self.triggers.data_stream_arn}",
-                    "SpokeAccounts":"${self.triggers.spoke_accounts}"
-                }
-            } \
-            response.json
-        COMMAND
-        , "/(\\\\)*\\r\\n\\s*/", "")
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ap-northeast-1
     }
 }
 
-# ##################################################################################################
-# Creation of CloudWatch Destinations
-# Depends on null_resource.os_cw_destinations_deletion to ensure execution on delete BEFORE
-# ##################################################################################################
-data "aws_lambda_invocation" "os_cw_destinations_creation" {
+module "ap-northeast-2_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ap-northeast-2")) ? 1 : 0
     depends_on = [
-        aws_lambda_function.deployment_helper_tf,
-        aws_iam_role_policy_attachment.deployment_helper_tf_role_attachment_add,
-        null_resource.os_cw_destinations_deletion
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    function_name = aws_lambda_function.deployment_helper_tf.function_name
-    input = jsonencode({
-        "ResourceType" = "Custom::CloudWatchDestination",
-        "RequestType"  = "Create",
-        "ResourceProperties": {
-            "Regions"           = var.spoke_regions,
-            "DestinationName"   = var.destination_name,
-            "RoleArn"           = aws_iam_role.os_cw_destination_role.arn,
-            "DataStreamArn"     = aws_kinesis_stream.os_kinesis_data_stream.arn
-            "SpokeAccounts"     = var.spoke_accounts != "" ? var.spoke_accounts : data.aws_caller_identity.current.account_id
-        }
-    })
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ap-northeast-2
+    }
+}
+
+module "ap-northeast-3_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ap-northeast-3")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ap-northeast-3
+    }
+}
+
+module "ap-south-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ap-south-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ap-south-1
+    }
+}
+
+module "ap-southeast-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ap-southeast-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ap-southeast-1
+    }
+}
+
+module "ap-southeast-2_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ap-southeast-2")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ap-southeast-2
+    }
+}
+
+module "ca-central-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "ca-central-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.ca-central-1
+    }
+}
+
+module "eu-central-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "eu-central-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.eu-central-1
+    }
+}
+
+module "eu-north-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "eu-north-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.eu-north-1
+    }
+}
+
+module "eu-west-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "eu-west-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.eu-west-1
+    }
+}
+
+module "eu-west-2_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "eu-west-2")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.eu-west-2
+    }
+}
+
+module "eu-west-3_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "eu-west-3")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.eu-west-3
+    }
+}
+
+module "sa-east-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "sa-east-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.sa-east-1
+    }
+}
+
+module "us-east-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "us-east-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.us-east-1
+    }
+}
+
+module "us-east-2_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "us-east-2")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.us-east-2
+    }
+}
+
+module "us-west-1_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "us-west-1")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.us-west-1
+    }
+}
+
+module "us-west-2_cw_destination" {
+    count = (contains(local.regions, "all") || contains(local.regions, "us-west-2")) ? 1 : 0
+    depends_on = [
+        aws_iam_role_policy_attachment.os_cw_destination_role_attachment
+    ]
+    source = "./modules/cw_destination"
+
+    resource_prefix         = var.resource_prefix
+    spoke_accounts          = var.spoke_accounts
+    destination_name        = var.destination_name
+    kinesis_stream_arn      = aws_kinesis_stream.os_kinesis_data_stream.arn
+    cw_destination_role_arn = aws_iam_role.os_cw_destination_role.arn
+
+    providers = {
+        aws = aws.us-west-2
+    }
 }

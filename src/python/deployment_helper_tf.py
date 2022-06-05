@@ -155,7 +155,7 @@ def create_cloudwatch_destinations(regions, destination_name, role_arn, \
     return return_value
 
 def cloudwatch_destinations(resource_properties, request_type):
-    """_Handles the resource CloudWatch Destinations
+    """ Handles the resource CloudWatch Destinations
 
     Args:
         resource_properties (dictionary): The Resource Properties

@@ -24,41 +24,182 @@
 terraform {
     required_providers {
         aws = {
-        source  = "hashicorp/aws"
-        version = "~> 4.13.0"
+            source  = "hashicorp/aws"
+            version = "~> 4.13.0"
         }
     }
 
     required_version = ">= 0.14.9"
 }
 
+locals {
+    default_tags = {
+        Owner = var.tag_owner
+        Type  = var.tag_type
+        Usage = var.tag_usage
+    }
+}
+
+locals {
+    regions = var.spoke_regions == "" ? tolist(["all"]) : split(",", var.spoke_regions)
+}
+
 provider "aws" {
-    region  = var.aws_region
+    region       = var.aws_region
     default_tags {
-        tags = {
-            Owner = var.tag_owner
-            Type  = var.tag_type
-            Usage = var.tag_usage
-        }
+        tags = local.default_tags
     }
 }
 
 provider "aws" {
-    alias      = "acm_provider"
-    region     = "us-east-1"
+    alias        = "acm_provider"
+    region       = "us-east-1"
     default_tags {
-        tags = {
-            Owner = var.tag_owner
-            Type  = var.tag_type
-            Usage = var.tag_usage
-        }
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ap-northeast-1"
+    region       = "ap-northeast-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ap-northeast-2"
+    region       = "ap-northeast-2"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ap-northeast-3"
+    region       = "ap-northeast-3"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ap-south-1"
+    region       = "ap-south-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ap-southeast-1"
+    region       = "ap-southeast-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ap-southeast-2"
+    region       = "ap-southeast-2"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "ca-central-1"
+    region       = "ca-central-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "eu-central-1"
+    region       = "eu-central-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "eu-north-1"
+    region       = "eu-north-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "eu-west-1"
+    region       = "eu-west-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "eu-west-2"
+    region       = "eu-west-2"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "eu-west-3"
+    region       = "eu-west-3"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "sa-east-1"
+    region       = "sa-east-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "us-east-1"
+    region       = "us-east-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "us-east-2"
+    region       = "us-east-2"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "us-west-1"
+    region       = "us-west-1"
+    default_tags {
+        tags = local.default_tags
+    }
+}
+
+provider "aws" {
+    alias        = "us-west-2"
+    region       = "us-west-2"
+    default_tags {
+        tags = local.default_tags
     }
 }
 
 resource "random_string" "unique_id" {
     count   = var.resource_prefix == "" ? 1 : 0
     length  = 8
-    special = false  
+    special = false
+    upper = false
 }
 
 resource "aws_iam_service_linked_role" "os_service_linked_role" {
