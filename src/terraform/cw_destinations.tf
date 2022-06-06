@@ -64,7 +64,7 @@ module "ap-northeast-1_cw_destination" {
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
 
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -82,7 +82,7 @@ module "ap-northeast-2_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -100,7 +100,7 @@ module "ap-northeast-3_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -118,7 +118,7 @@ module "ap-south-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -136,7 +136,7 @@ module "ap-southeast-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -154,7 +154,7 @@ module "ap-southeast-2_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -172,7 +172,7 @@ module "ca-central-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -190,7 +190,7 @@ module "eu-central-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -208,7 +208,7 @@ module "eu-north-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -226,7 +226,7 @@ module "eu-west-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -244,7 +244,7 @@ module "eu-west-2_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -262,7 +262,7 @@ module "eu-west-3_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -280,7 +280,7 @@ module "sa-east-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -298,7 +298,7 @@ module "us-east-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -316,7 +316,7 @@ module "us-east-2_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -334,7 +334,7 @@ module "us-west-1_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
@@ -352,7 +352,7 @@ module "us-west-2_cw_destination" {
     depends_on = [
         aws_iam_role_policy_attachment.os_cw_destination_role_attachment
     ]
-    source = "./modules/cw_destination"
+    source = "git::https://github.com/katjes733/cloudwatch-destination-module.git//src/terraform"
 
     resource_prefix         = var.resource_prefix
     spoke_accounts          = var.spoke_accounts
