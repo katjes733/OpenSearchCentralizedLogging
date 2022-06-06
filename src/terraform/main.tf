@@ -681,3 +681,15 @@ resource "aws_kinesis_firehose_delivery_stream" "os_kinesis_delivery_stream" {
         role_arn = aws_iam_role.os_kinesis_delivery_stream_role.arn
     }
 }
+
+# ##################################################################################################
+# Resources for Log Data Transformation
+# ##################################################################################################
+
+module "log_data_transformation" { 
+    source = "git::https://github.com/katjes733/log-data-transformation-module.git//src/terraform"
+
+    resource_prefix             = var.resource_prefix
+    kinesis_delivery_stream_arn = aws_kinesis_firehose_delivery_stream.os_kinesis_delivery_stream.arn
+    kinesis_data_stream_arn     = aws_kinesis_stream.os_kinesis_data_stream.arn
+}
