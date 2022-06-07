@@ -40,10 +40,6 @@ locals {
     }
 }
 
-locals {
-    regions = var.spoke_regions == "" ? tolist(["all"]) : split(",", var.spoke_regions)
-}
-
 provider "aws" {
     region       = var.aws_region
     default_tags {
@@ -633,7 +629,7 @@ data "aws_iam_policy_document" "os_kinesis_delivery_stream_role_policy_document"
         condition {
             test     = "StringLike"
             variable = "kms:EncryptionContext:aws:kinesis:arn"
-            values   = [ aws_kinesis_stream.os_kinesis_data_stream.arn ]
+            values   = [ module.cw_destinations.kinesis_data_stream_arn ]
         }
         resources = [ "arn:${data.aws_partition.current.partition}:kms:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:key/*" ]
     }
@@ -691,7 +687,7 @@ module "log_data_transformation" {
 
     resource_prefix             = var.resource_prefix
     kinesis_delivery_stream_arn = aws_kinesis_firehose_delivery_stream.os_kinesis_delivery_stream.arn
-    kinesis_data_stream_arn     = aws_kinesis_stream.os_kinesis_data_stream.arn
+    kinesis_data_stream_arn     = module.cw_destinations.kinesis_data_stream_arn
 }
 
 # ##################################################################################################
@@ -706,4 +702,36 @@ module "user_management" {
     auto_confirm_user           = var.os_dashboards_auto_confirm_user
     domain_name                 = var.os_domain_name
     admin_email                 = var.os_admin_email
+}
+
+# ##################################################################################################
+# Resources for CloudWatch Destinations
+# ##################################################################################################
+
+module "cw_destinations" { 
+    source = "./modules/cw-destinations"
+    providers = {
+        aws.ap-northeast-1 = aws.ap-northeast-1
+        aws.ap-northeast-2 = aws.ap-northeast-2
+        aws.ap-northeast-3 = aws.ap-northeast-3
+        aws.ap-south-1     = aws.ap-south-1
+        aws.ap-southeast-1 = aws.ap-southeast-1
+        aws.ap-southeast-2 = aws.ap-southeast-2
+        aws.ca-central-1   = aws.ca-central-1
+        aws.eu-central-1   = aws.eu-central-1
+        aws.eu-north-1     = aws.eu-north-1 
+        aws.eu-west-1      = aws.eu-west-1
+        aws.eu-west-2      = aws.eu-west-2
+        aws.eu-west-3      = aws.eu-west-3
+        aws.sa-east-1      = aws.sa-east-1
+        aws.us-east-1      = aws.us-east-1
+        aws.us-east-2      = aws.us-east-2 
+        aws.us-west-1      = aws.us-west-1
+        aws.us-west-2      = aws.us-west-2
+    }
+
+    resource_prefix             = var.resource_prefix
+    spoke_regions               = var.spoke_regions
+    spoke_accounts              = var.spoke_accounts
+    destination_name            = var.destination_name
 }

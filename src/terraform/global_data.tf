@@ -31,17 +31,6 @@ data "aws_regions" "all_regions" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_iam_policy_document" "lambda_assume_role_policy_document" {
-    statement {
-        effect = "Allow"
-        actions = [ "sts:AssumeRole" ]
-        principals {
-            type        = "Service"
-            identifiers = [ "lambda.amazonaws.com" ]
-        }
-    }
-}
-
 data "aws_iam_policy_document" "firehose_assume_role_policy_document" {
     statement {
         effect = "Allow"
