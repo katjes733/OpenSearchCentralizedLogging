@@ -26,9 +26,5 @@
 # ##################################################################################################
 
 locals {
-    is_arm_supported_region = contains(["us-east-1", "us-west-2", "eu-central-1", "eu-west-1", "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1"], data.aws_region.current.name)
-}
-
-locals {
     use_master_node         = lookup(local.os_sizing_master_count, var.os_size) != 0
 }

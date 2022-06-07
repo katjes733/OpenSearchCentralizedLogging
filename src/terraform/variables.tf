@@ -138,7 +138,7 @@ variable "os_admin_email" {
 
     validation {
         condition     = can(regex("^[\\w\\.]+\\@[\\w]+\\.[a-z]+$", var.os_admin_email))
-        error_message = "The OpenSearch Domain must not be empty."
+        error_message = "The Admin Email must not be empty."
     }
 }
 

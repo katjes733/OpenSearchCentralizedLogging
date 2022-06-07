@@ -21,45 +21,25 @@
 # SOFTWARE.
 #
 
-data "aws_partition" "current" {}
+variable "resource_prefix" {
+    description = "The prefix for all resources. If empty, uniquness of resource names is ensured."
+    type        = string
+    default     = "mac-"
 
-data "aws_region" "current" {}
-
-data "aws_regions" "all_regions" {
-    all_regions = true
-}
-
-data "aws_caller_identity" "current" {}
-
-data "aws_iam_policy_document" "lambda_assume_role_policy_document" {
-    statement {
-        effect = "Allow"
-        actions = [ "sts:AssumeRole" ]
-        principals {
-            type        = "Service"
-            identifiers = [ "lambda.amazonaws.com" ]
-        }
+    validation {
+        condition     = can(regex("^$|^[a-z0-9-]{0,7}$", var.resource_prefix))
+        error_message = "The resource_prefix must be empty or not be longer that 7 characters containing only the following characters: a-z0-9- ."
     }
 }
 
-data "aws_iam_policy_document" "firehose_assume_role_policy_document" {
-    statement {
-        effect = "Allow"
-        actions = [ "sts:AssumeRole" ]
-        principals {
-            type        = "Service"
-            identifiers = [ "firehose.amazonaws.com" ]
-        }
-    }
+variable "allowed_email_signup_regex" {
+    description = "Restrict sign up only to emails matching this regular expression (leave empty to allow all - not recommended)"
+    type        = string
+    default     = ""
 }
 
-data "aws_iam_policy_document" "cloudwatch_assume_role_policy_document" {
-    statement {
-        effect = "Allow"
-        actions = [ "sts:AssumeRole" ]
-        principals {
-            type        = "Service"
-            identifiers = [ "logs.amazonaws.com" ]
-        }
-    }
+variable "auto_confirm_user" {
+    description = "Whether or not users signing up DO NOT have to confirm their email with a security code (highly recommended to leave at false)"
+    type        = bool
+    default     = false
 }

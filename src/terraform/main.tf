@@ -289,7 +289,7 @@ data "aws_iam_policy_document" "os_access_policy_document" {
 
         principals {
             type        = "AWS"
-            identifiers = [ aws_iam_role.os_cognito_authentication_role.arn ]
+            identifiers = [ module.user_management.cognito_authentication_role_arn ]
         }
         dynamic "condition" {
             for_each = var.os_dashboards_allowed_cidrs != "" ? [1] : []
@@ -346,9 +346,9 @@ resource "aws_elasticsearch_domain" "opensearch" {
     }
     cognito_options {
         enabled           = true
-        identity_pool_id  = aws_cognito_identity_pool.os_cognito_identity_pool.id
-        role_arn          = aws_iam_role.os_cognito_role.arn
-        user_pool_id      = aws_cognito_user_pool.os_cognito_user_pool.id
+        identity_pool_id  = module.user_management.cognito_identity_pool_id
+        role_arn          = module.user_management.cognito_role_arn
+        user_pool_id      = module.user_management.cognito_user_pool_id
     }
     dynamic "domain_endpoint_options" {
         for_each = var.os_custom_dashboards_domain != "" ? [1] : []
@@ -422,7 +422,7 @@ resource "aws_iam_policy" "os_cognito_auth_policy" {
 }
 
 resource "aws_iam_role_policy_attachment" "os_cognito_authentication_role_attachment" {
-    role       = aws_iam_role.os_cognito_authentication_role.name
+    role       = regex("^.*\\/(?P<name>.*)$", module.user_management.cognito_authentication_role_arn)["name"]
     policy_arn = aws_iam_policy.os_cognito_auth_policy.arn
 }
 
@@ -692,4 +692,18 @@ module "log_data_transformation" {
     resource_prefix             = var.resource_prefix
     kinesis_delivery_stream_arn = aws_kinesis_firehose_delivery_stream.os_kinesis_delivery_stream.arn
     kinesis_data_stream_arn     = aws_kinesis_stream.os_kinesis_data_stream.arn
+}
+
+# ##################################################################################################
+# Resources for User Management
+# ##################################################################################################
+
+module "user_management" { 
+    source = "./modules/user-management"
+
+    resource_prefix             = var.resource_prefix
+    allowed_email_signup_regex  = var.os_dashboards_allowed_email_signup_regex
+    auto_confirm_user           = var.os_dashboards_auto_confirm_user
+    domain_name                 = var.os_domain_name
+    admin_email                 = var.os_admin_email
 }
